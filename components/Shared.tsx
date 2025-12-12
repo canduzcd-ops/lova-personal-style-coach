@@ -1,53 +1,87 @@
-
 import React, { useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 
-interface ButtonProps {
-  children?: React.ReactNode;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger' | 'gold';
-  className?: string;
-  type?: 'button' | 'submit' | 'reset';
-  icon?: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
-  disabled?: boolean;
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger' | 'gold';
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  icon?: LucideIcon;
+  fullWidth?: boolean;
+  isLoading?: boolean;
 }
 
-export const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled, type = 'button' }: ButtonProps) => {
+export const Button: React.FC<ButtonProps> = ({
+  children,
+  onClick,
+  variant = 'primary',
+  className = '',
+  type = 'button',
+  icon: Icon,
+  disabled,
+  fullWidth = true,
+  isLoading = false,
+  ...rest
+}) => {
   // Editorial Button: Rounded-xl but slightly boxier than full pill, tracking widest for high-fashion feel.
-  const baseStyle = 'w-full py-4 px-6 font-bold text-xs uppercase tracking-[0.15em] flex items-center justify-center gap-3 transition-all duration-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed';
-  
-  const variants = {
+  const baseStyle =
+    'py-4 px-6 font-bold text-xs uppercase tracking-[0.15em] flex items-center justify-center gap-3 transition-all duration-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed';
+  const widthClass = fullWidth ? 'w-full' : 'w-auto';
+
+  const variants: Record<ButtonVariant, string> = {
     // Primary: Terracotta Accent with Nude Text
-    primary: 'bg-accent text-page dark:bg-accent-dark dark:text-page-dark rounded-xl hover:shadow-lg hover:-translate-y-0.5 shadow-soft',
+    primary:
+      'bg-accent text-page dark:bg-accent-dark dark:text-page-dark rounded-xl hover:shadow-lg hover:-translate-y-0.5 shadow-soft',
     // Secondary: Bordered
-    secondary: 'bg-transparent border border-border dark:border-border-dark text-primary dark:text-primary-dark hover:bg-surface dark:hover:bg-surface-dark rounded-xl',
-    ghost: 'bg-transparent text-secondary dark:text-secondary-dark hover:text-primary dark:hover:text-primary-dark',
-    outline: 'border border-primary text-primary dark:border-primary-dark dark:text-primary-dark rounded-xl',
-    danger: 'bg-red-50 text-red-600 border border-red-100 dark:bg-red-900/10 dark:text-red-400 dark:border-red-900/20 rounded-xl',
+    secondary:
+      'bg-transparent border border-border dark:border-border-dark text-primary dark:text-primary-dark hover:bg-surface dark:hover:bg-surface-dark rounded-xl',
+    ghost:
+      'bg-transparent text-secondary dark:text-secondary-dark hover:text-primary dark:hover:text-primary-dark',
+    outline:
+      'border border-primary text-primary dark:border-primary-dark dark:text-primary-dark rounded-xl',
+    danger:
+      'bg-red-50 text-red-600 border border-red-100 dark:bg-red-900/10 dark:text-red-400 dark:border-red-900/20 rounded-xl',
     // Gold -> Terracotta Gradient
-    gold: 'bg-gradient-to-r from-accent to-accent-dark text-page rounded-xl shadow-md hover:shadow-glow' 
+    gold: 'bg-gradient-to-r from-accent to-accent-dark text-page rounded-xl shadow-md hover:shadow-glow',
   };
 
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
-      {Icon && <Icon size={16} strokeWidth={2} className={Icon === Loader2 ? 'animate-spin' : ''} />}
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled || isLoading}
+      className={`${baseStyle} ${widthClass} ${variants[variant]} ${className}`}
+      {...rest}
+    >
+      {Icon && (
+        <Icon
+          size={16}
+          strokeWidth={2}
+          className={isLoading || Icon === Loader2 ? 'animate-spin' : ''}
+        />
+      )}
       {children}
     </button>
   );
 };
 
-interface InputProps {
+interface InputProps
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  placeholder?: string;
-  type?: 'text' | 'password' | 'email';
-  autoComplete?: string;
-  name?: string;
-  className?: string; // Added className support
 }
-
-export const Input = ({ label, value, onChange, placeholder, type = 'text', autoComplete, name, className = '' }: InputProps) => {
+export const Input: React.FC<InputProps> = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  autoComplete,
+  name,
+  className = '',
+  ...rest
+}) => {
   const [showPassword, setShowPassword] = useState(false);
   const isPasswordType = type === 'password';
   const inputType = isPasswordType ? (showPassword ? 'text' : 'password') : type;
@@ -66,6 +100,7 @@ export const Input = ({ label, value, onChange, placeholder, type = 'text', auto
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           className={`w-full px-5 py-4 bg-surface dark:bg-surface-dark/50 border border-transparent focus:border-accent dark:focus:border-accent focus:bg-page-soft dark:focus:bg-page-dark rounded-xl outline-none transition-all duration-300 text-primary dark:text-primary-dark placeholder:text-secondary/40 dark:placeholder:text-secondary-dark/40 text-sm font-medium tracking-wide shadow-sm focus:shadow-md ${className}`}
+          {...rest}
         />
         {isPasswordType && (
           <button
@@ -73,7 +108,11 @@ export const Input = ({ label, value, onChange, placeholder, type = 'text', auto
             onClick={() => setShowPassword(!showPassword)}
             className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary/60 hover:text-primary transition-colors p-1"
           >
-            {showPassword ? <EyeOff size={18} strokeWidth={1.5} /> : <Eye size={18} strokeWidth={1.5} />}
+            {showPassword ? (
+              <EyeOff size={18} strokeWidth={1.5} />
+            ) : (
+              <Eye size={18} strokeWidth={1.5} />
+            )}
           </button>
         )}
       </div>

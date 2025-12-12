@@ -1,0 +1,12 @@
+import { jsx as _jsx } from "react/jsx-runtime";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+    console.error('id="root" olan kök element bulunamadı');
+}
+else {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(_jsx(React.StrictMode, { children: _jsx(App, {}) }));
+}
