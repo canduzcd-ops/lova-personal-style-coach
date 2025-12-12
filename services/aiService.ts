@@ -1,11 +1,18 @@
-
-
 import { GoogleGenAI } from "@google/genai";
 import { UserProfile, WardrobeItem, StyleTipResult, SuggestionResult, MakeupAnalysis, StyleRating } from '../types';
 import { WARDROBE_CATEGORIES, STYLE_OPTIONS } from '../constants';
 import { Palette, Scissors, Sun, Tag, ShoppingBag } from 'lucide-react';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// .env içindeki değişkeni al
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
+
+if (!apiKey) {
+  // Konsolda net görünsün
+  console.error("VITE_GEMINI_API_KEY is missing. Check your .env file.");
+  throw new Error("AI API key is not set");
+}
+
+const ai = new GoogleGenAI({ apiKey });
 
 export interface AnalyzedItem {
   type: string;
@@ -21,6 +28,7 @@ export interface AnalyzedItem {
     aesthetic: string[];
   };
 }
+
 
 // Enhanced Image Analysis
 export const analyzeImage = async (base64Image: string): Promise<AnalyzedItem | null> => {
@@ -358,8 +366,9 @@ export const generatePersonalizedTips = async (user: UserProfile, wardrobe: Ward
 // Video Generation for Splash Screen
 export const generateFashionVideo = async (prompt: string): Promise<string | null> => {
   // Always create a new instance with the latest key environment
-  const aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+const aiClient = new GoogleGenAI({
+  apiKey: import.meta.env.VITE_GEMINI_API_KEY as string,
+});
   try {
     let operation = await aiClient.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
