@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+    <title>LOVA Style</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+      /* Reset & Base */
+      body {
+        -webkit-tap-highlight-color: transparent;
+        font-family: 'Inter', sans-serif;
+      }
+      
+      h1, h2, h3, h4, h5, h6 {
+        font-family: 'Playfair Display', serif;
+        letter-spacing: -0.02em;
+      }
+
+      /* Scrollbar Hiding */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      /* Nude Palette Variables */
+      :root {
+        --lova-bg:            #FFF7F0;  /* Light Nude Background */
+        --lova-bg-soft:       #FFFAF0;
+        --lova-surface:       #F3E5D8;  /* Slightly darker nude for cards */
+        --lova-surface-soft:  #FAEEE4;
+        --lova-accent:        #D98C6A;  /* Terracotta */
+        --lova-accent-soft:   #F1C1A6;
+        --lova-accent-dark:   #B56C4F;
+        --lova-text-main:     #3A2B27;  /* Dark Espresso Text */
+        --lova-text-muted:    #7A6154;
+        --lova-text-on-accent:#FFF7F0;
+        --lova-border-subtle: #E4D2C3;
+        --lova-shadow-soft:   0 18px 40px rgba(58, 43, 39, 0.10);
+      }
+
+      /* Glass Effect - Unified Nude Tint for both modes */
+      .glass {
+        background: rgba(255, 247, 240, 0.85);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-bottom: 1px solid rgba(58, 43, 39, 0.05);
+      }
+      
+      /* Dark Mode Glass - Updated to Dark Tint */
+      .dark .glass {
+        background: rgba(12, 12, 12, 0.85); /* Midnight Glass */
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      /* Animations */
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+      .animate-float { animation: float 6s ease-in-out infinite; }
+    </style>
+
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              serif: ['"Playfair Display"', 'serif'],
+              sans: ['"Inter"', 'sans-serif'],
+            },
+            colors: {
+              // Updated Palette with Real Dark Mode Colors
+              page: {
+                DEFAULT: '#FFF7F0', // Light Nude
+                soft: '#FFFAF0',
+                dark: '#0C0C0C'     // Midnight Black
+              },
+              surface: {
+                DEFAULT: '#F3E5D8', // Card Surface Light
+                soft: '#FAEEE4',
+                dark: '#1C1917'     // Dark Stone Surface
+              },
+              primary: {
+                DEFAULT: '#3A2B27', // Dark Brown Text
+                dark: '#F5F5F4'     // Off-White Text for Dark Mode
+              },
+              secondary: {
+                DEFAULT: '#7A6154', // Muted Brown
+                dark: '#A8A29E'     // Muted Gray for Dark Mode
+              },
+              border: {
+                DEFAULT: '#E4D2C3', 
+                dark: '#292524'     // Dark Stone Border
+              },
+              accent: {
+                DEFAULT: '#D98C6A', // Terracotta
+                soft: '#F1C1A6',
+                dark: '#D98C6A',    // Keep accent visible in dark mode
+              },
+              // Aliases
+              lova: {
+                bg: '#FFF7F0',
+                primary: '#3A2B27',
+                secondary: '#7A6154',
+                accent: '#D98C6A',
+                surface: '#F3E5D8'
+              }
+            },
+            boxShadow: {
+              'soft': '0 18px 40px rgba(58, 43, 39, 0.10)',
+              'glow': '0 0 20px rgba(217, 140, 106, 0.3)',
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.6s ease-out forwards',
+              'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'scale-in': 'scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              scaleIn: {
+                '0%': { transform: 'scale(0.95)', opacity: '0' },
+                '100%': { transform: 'scale(1)', opacity: '1' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.6",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-page dark:bg-page-dark text-primary dark:text-primary-dark overflow-hidden select-none transition-colors duration-500 font-sans antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

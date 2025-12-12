@@ -1,0 +1,7 @@
+{
+  "name": "Copy of LOVA - Personal Style Coach",
+  "description": "Minimalist wardrobe manager and AI style consultant.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
