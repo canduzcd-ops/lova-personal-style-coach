@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "659872866512",
+    "project_id": "lova-style-coach",
+    "storage_bucket": "lova-style-coach.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:659872866512:android:2807d34e6534797436bed5",
+        "android_client_info": {
+          "package_name": "com.racalabs.thelova"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "659872866512-a51pofra536p1jiruhb48dva7bv7520n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.racalabs.thelova",
+            "certificate_hash": "add2ee9d5617323325018ea41423d3b1d5337e68"
+          }
+        },
+        {
+          "client_id": "659872866512-80aongfh4fu64ebbvv2n36tr5dj0v179.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQ3dxP9tQyfR_zI-6l3sA7eH_pB_tJv0g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "659872866512-80aongfh4fu64ebbvv2n36tr5dj0v179.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

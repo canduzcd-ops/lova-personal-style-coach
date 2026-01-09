@@ -1,0 +1,11 @@
+name = "ai-gateway"
+main = "src/index.ts"
+compatibility_date = "2025-01-09"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# You can add non-secret defaults here if needed.
+
+# Secrets to set (not committed):
+# wrangler secret put GEMINI_API_KEY
+# wrangler secret put GATEWAY_KEY

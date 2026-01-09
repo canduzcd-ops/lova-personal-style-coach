@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { Button, Input } from '../components/Shared';
 import { STYLE_OPTIONS } from '../constants';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   onComplete: (data: { name: string; styles: string[] }) => void;
@@ -12,6 +13,7 @@ export const OnboardingFlow: React.FC<Props> = ({ onComplete, initialName }) => 
   const [step, setStep] = useState<'intro' | 'details'>('intro');
   const [name, setName] = useState(initialName || '');
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+  const { t } = useTranslation();
 
   const toggleStyle = (id: string) => {
     setSelectedStyles(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
@@ -29,11 +31,11 @@ export const OnboardingFlow: React.FC<Props> = ({ onComplete, initialName }) => 
         </div>
         
         <div className="relative z-10 w-full mb-8">
-           <h1 className="text-5xl font-serif mb-4 leading-[1.1] text-primary">Stilini<br/><span className="italic text-accent">Yönet.</span></h1>
+           <h1 className="text-5xl font-serif mb-4 leading-[1.1] text-primary">{t('onboarding.introTitleMain')}<br/><span className="italic text-accent">{t('onboarding.introTitleAccent')}</span></h1>
            <p className="text-secondary text-sm font-medium leading-relaxed max-w-xs mb-8">
-               Yapay zeka asistanın ile gardırobunu sadeleştir, her gün en iyi halinle görün.
+               {t('onboarding.introSubtitle')}
            </p>
-           <Button onClick={() => setStep('details')} icon={ArrowRight} className="shadow-soft">Başlayalım</Button>
+           <Button onClick={() => setStep('details')} icon={ArrowRight} className="shadow-soft">{t('onboarding.start')}</Button>
         </div>
       </div>
     );
@@ -43,14 +45,14 @@ export const OnboardingFlow: React.FC<Props> = ({ onComplete, initialName }) => 
     <div className="fixed inset-0 bg-page dark:bg-page-dark flex flex-col p-8 animate-in slide-in-from-bottom duration-500">
        <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
            <div className="w-12 h-1 bg-border mb-6 rounded-full"></div>
-           <h2 className="text-3xl font-serif text-primary dark:text-primary-dark mb-2">Tanışalım</h2>
-           <p className="text-secondary dark:text-secondary-dark text-sm mb-8">Sana özel öneriler sunabilmemiz için.</p>
+             <h2 className="text-3xl font-serif text-primary dark:text-primary-dark mb-2">{t('onboarding.detailsTitle')}</h2>
+             <p className="text-secondary dark:text-secondary-dark text-sm mb-8">{t('onboarding.detailsSubtitle')}</p>
            
            <div className="mb-10">
-               <Input label="Adın Nedir?" value={name} onChange={setName} placeholder="İsim giriniz..." />
+               <Input label={t('onboarding.nameLabel')} value={name} onChange={setName} placeholder={t('onboarding.namePlaceholder')} />
            </div>
 
-           <h3 className="text-[10px] font-bold text-secondary dark:text-secondary-dark uppercase tracking-[0.2em] mb-4">Hangi stilleri seversin?</h3>
+             <h3 className="text-[10px] font-bold text-secondary dark:text-secondary-dark uppercase tracking-[0.2em] mb-4">{t('onboarding.stylesLabel')}</h3>
            <div className="grid grid-cols-2 gap-3">
                {STYLE_OPTIONS.map(style => (
                    <button 
@@ -69,13 +71,13 @@ export const OnboardingFlow: React.FC<Props> = ({ onComplete, initialName }) => 
        </div>
 
        <div className="pt-6 bg-page dark:bg-page-dark">
-           <Button 
+             <Button 
             onClick={() => onComplete({ name, styles: selectedStyles })} 
             disabled={!name || selectedStyles.length === 0}
             className="!py-4 shadow-xl"
-           >
-               Uygulamaya Gir
-           </Button>
+             >
+               {t('onboarding.ctaFinish')}
+             </Button>
        </div>
     </div>
   );

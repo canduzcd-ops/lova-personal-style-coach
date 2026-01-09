@@ -6,6 +6,7 @@ import { UserProfile } from './types';
 import { authService } from './services/authService';
 import { auth } from './services/firebaseClient';
 import { Loader2 } from 'lucide-react';
+import { PremiumProvider } from './contexts/PremiumContext';
 
 const App = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -13,34 +14,33 @@ const App = () => {
   const [introSeen, setIntroSeen] = useState(false);
 
   useEffect(() => {
-    // Check local storage for intro
     const hasSeenIntro = localStorage.getItem('lova_intro_seen') === 'true';
     setIntroSeen(hasSeenIntro);
 
-    // Standard Tailwind Dark Mode Logic
-    if (user?.theme === 'dark') {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-    }
-
-    // Using auth instance method for compatibility
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-        if (firebaseUser) {
-             try {
-                 const profile = await authService.getCurrentSessionUser();
-                 if (profile) setUser(profile);
-                 else setUser(null); 
-             } catch (e) {
-                 setUser(null);
-             }
-        } else {
-            setUser(null);
+      if (firebaseUser) {
+        try {
+          const profile = await authService.getCurrentSessionUser();
+          if (profile) setUser(profile);
+          else setUser(null);
+        } catch (e) {
+          setUser(null);
         }
-        setLoading(false);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
     });
 
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user?.theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [user?.theme]);
 
   const handleIntroComplete = () => {
@@ -57,21 +57,23 @@ const App = () => {
   }
 
   return (
-    <div className="relative h-screen flex flex-col bg-page dark:bg-page-dark font-sans max-w-md mx-auto shadow-2xl overflow-hidden text-primary dark:text-primary-dark">
-      {!user ? (
-        !introSeen ? (
-           <IntroScreen onComplete={handleIntroComplete} />
+    <PremiumProvider>
+      <div className="relative h-screen flex flex-col bg-page dark:bg-page-dark font-sans max-w-md mx-auto shadow-2xl overflow-hidden text-primary dark:text-primary-dark">
+        {!user ? (
+          !introSeen ? (
+             <IntroScreen onComplete={handleIntroComplete} />
+          ) : (
+             <AuthScreen onLogin={setUser} />
+          )
         ) : (
-           <AuthScreen onLogin={setUser} />
-        )
-      ) : (
-        <Dashboard 
-            user={user} 
-            onLogout={() => { authService.logout(); setUser(null); }} 
-            updateUser={setUser} 
-        />
-      )}
-    </div>
+          <Dashboard 
+              user={user} 
+              onLogout={() => { authService.logout(); setUser(null); }} 
+              updateUser={setUser} 
+          />
+        )}
+      </div>
+    </PremiumProvider>
   );
 };
 

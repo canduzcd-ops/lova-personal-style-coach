@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const notificationService = {
   // Check if notifications are enabled in app prefs AND browser
@@ -44,3 +46,45 @@ export const notificationService = {
     }
   }
 };
+
+export function isSupported(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+async function ensurePermission(): Promise<boolean> {
+  const current = await LocalNotifications.checkPermissions();
+  if (current.display === 'granted') return true;
+
+  const requested = await LocalNotifications.requestPermissions();
+  return requested.display === 'granted';
+}
+
+export async function enable(): Promise<void> {
+  if (!isSupported()) return;
+
+  const granted = await ensurePermission();
+  if (!granted) return;
+
+  const now = Date.now();
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: Math.floor(now % 2147483647),
+        title: 'LOVA bildirim testi',
+        body: 'Bildirimler açıldı. Bu yalnızca bir testtir.',
+        schedule: { at: new Date(now + 5000) },
+      },
+    ],
+  });
+}
+
+export async function cancelAll(): Promise<void> {
+  if (!isSupported()) return;
+
+  const pending = await LocalNotifications.getPending();
+  if (pending.notifications.length > 0) {
+    await LocalNotifications.cancel({ notifications: pending.notifications });
+  }
+
+  await LocalNotifications.removeAllDeliveredNotifications();
+}

@@ -2,9 +2,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, BodyMeasurements, MakeupAnalysis } from '../types';
 import { Button, Input } from '../components/Shared';
-import { Crown, BarChart2, Calendar, Mail, User, ArrowLeft, LogOut, Lock, Edit2, Save, Smile, Palette, Camera, Loader2, Sparkles, Eye, Sun, Heart, ImageIcon } from 'lucide-react';
+import { Crown, BarChart2, Calendar, Mail, User, ArrowLeft, LogOut, Lock, Edit2, Save, Smile, Palette, Camera, Loader2, Sparkles, Eye, Sun, Heart, ImageIcon, Bell, BellOff } from 'lucide-react';
 import { authService } from '../services/authService';
 import { analyzeFaceForMakeup } from '../services/aiService';
+import { enable as enableLocalNotifications, cancelAll as cancelAllLocalNotifications, isSupported as notificationsSupported } from '../services/notificationService';
+import { useImagePicker } from '../hooks/useImagePicker';
+import { ImagePickerModal } from '../components/ImagePickerModal';
+import { usePremium } from '../contexts/PremiumContext';
 
 interface Props {
   user: UserProfile;
@@ -88,7 +92,7 @@ const BodyMeasurementsCard = ({
     onOpenPremium?: () => void,
     onSave?: (m: BodyMeasurements, bodyType: string) => void 
 }) => {
-    const isPremium = user.isPremium;
+    const { isPremium } = usePremium();
     const savedM = user.bodyMeasurements;
     
     const [isEditing, setIsEditing] = useState(!savedM);
@@ -215,11 +219,21 @@ const MakeupAnalysisCard = ({
     onOpenPremium?: () => void,
     onSave?: (result: MakeupAnalysis) => void
 }) => {
-    const isPremium = user.isPremium;
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { isPremium } = usePremium();
     const [loading, setLoading] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [isReset, setIsReset] = useState(false);
+
+    // Image picker hook
+    const handleImageSelected = (base64: string) => {
+        setSelectedImage(base64);
+        setIsReset(false);
+    };
+
+    const imagePicker = useImagePicker({
+        onImageSelected: handleImageSelected,
+        onError: (err) => console.error('Makeup image picker error:', err),
+    });
 
     // Sync state with user prop updates (e.g. when analysis is saved)
     useEffect(() => {
@@ -227,20 +241,6 @@ const MakeupAnalysisCard = ({
             setIsReset(false);
         }
     }, [user.makeupAnalysis]);
-
-    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-            const base64 = ev.target?.result as string;
-            const compressed = await compressImage(base64);
-            setSelectedImage(compressed);
-            setIsReset(false); // New image loaded, exit reset state
-        };
-        reader.readAsDataURL(file);
-    };
 
     const runAnalysis = async () => {
         if (!selectedImage) return;
@@ -268,15 +268,11 @@ const MakeupAnalysisCard = ({
     const handleCameraClick = () => {
         setSelectedImage(null);
         setIsReset(true);
-        // Reset file input value to allow selecting the same file again
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-            fileInputRef.current.click();
-        }
+        imagePicker.showPicker();
     };
 
     const triggerUpload = () => {
-        fileInputRef.current?.click();
+        imagePicker.showPicker();
     };
 
     if (!isPremium) {
@@ -380,14 +376,31 @@ const MakeupAnalysisCard = ({
                     </div>
                 </div>
                 
-                {/* Hidden input for re-uploading via camera button logic */}
-                <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFile} />
+                {/* Image Picker Modal */}
+                <ImagePickerModal
+                    isVisible={imagePicker.isPickerVisible}
+                    onClose={() => imagePicker.setPickerVisible(false)}
+                    onSelectCamera={() => imagePicker.pickImage('camera')}
+                    onSelectGallery={() => imagePicker.pickImage('gallery')}
+                />
+                {/* Hidden file input for web fallback */}
+                <input type="file" ref={imagePicker.fileInputRef} hidden accept="image/*" onChange={imagePicker.handleFileInput} />
             </div>
         );
     }
 
     return (
         <div className="bg-surface dark:bg-surface-dark p-6 rounded-2xl border border-border dark:border-border-dark mt-6 animate-fade-in">
+             {/* Image Picker Modal */}
+             <ImagePickerModal
+                 isVisible={imagePicker.isPickerVisible}
+                 onClose={() => imagePicker.setPickerVisible(false)}
+                 onSelectCamera={() => imagePicker.pickImage('camera')}
+                 onSelectGallery={() => imagePicker.pickImage('gallery')}
+             />
+             {/* Hidden file input for web fallback */}
+             <input type="file" ref={imagePicker.fileInputRef} hidden accept="image/*" onChange={imagePicker.handleFileInput} />
+
              <h3 className="text-sm font-bold text-primary dark:text-primary-dark mb-4 px-1 flex items-center gap-2">
                 <Smile size={16} className="text-accent" /> Yüzüne Göre Makyaj Önerin
              </h3>
@@ -425,8 +438,6 @@ const MakeupAnalysisCard = ({
                      </div>
                  </div>
              )}
-             
-             <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFile} />
         </div>
     );
 };
@@ -434,7 +445,21 @@ const MakeupAnalysisCard = ({
 export const ProfileScreen: React.FC<Props> = ({ user, onBack, onLogout, onOpenPremium, updateUser }) => {
   const joinDate = new Date(user.joinedAt).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
   const subEndDate = user.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString('tr-TR') : null;
-  const avatarInputRef = useRef<HTMLInputElement>(null);
+    const { isPremium } = usePremium();
+
+  // Image picker for avatar
+  const handleAvatarSelected = async (base64: string) => {
+    if (updateUser) {
+      const newUser = { ...user, avatar_url: base64 };
+      updateUser(newUser);
+      await authService.updateProfile(newUser);
+    }
+  };
+
+  const avatarImagePicker = useImagePicker({
+    onImageSelected: handleAvatarSelected,
+    onError: (err) => console.error('Avatar image picker error:', err),
+  });
 
   const handleSaveMeasurements = async (m: BodyMeasurements, type: string) => {
       if (updateUser) {
@@ -452,31 +477,49 @@ export const ProfileScreen: React.FC<Props> = ({ user, onBack, onLogout, onOpenP
       }
   };
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+    const handleEnableNotifications = async () => {
+        if (!notificationsSupported()) {
+            alert('Sadece mobilde çalışır');
+            return;
+        }
 
-      // 1. Convert & Compress
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-          const base64 = ev.target?.result as string;
-          const compressed = await compressImage(base64);
+        try {
+            await enableLocalNotifications();
+            alert('Test bildirimi 5 saniye içinde gönderilecek.');
+        } catch (err) {
+            console.error('Bildirim etkinleştirme hatası', err);
+            alert('Bildirimler açılırken bir hata oluştu.');
+        }
+    };
 
-          // 2. Optimistic Update
-          if (updateUser) {
-              const newUser = { ...user, avatar_url: compressed };
-              updateUser(newUser);
-              
-              // 3. Persist
-              await authService.updateProfile(newUser);
-          }
-      };
-      reader.readAsDataURL(file);
-  };
+    const handleDisableNotifications = async () => {
+        if (!notificationsSupported()) {
+            alert('Sadece mobilde çalışır');
+            return;
+        }
+
+        try {
+            await cancelAllLocalNotifications();
+            alert('Bildirimler kapatıldı.');
+        } catch (err) {
+            console.error('Bildirim kapatma hatası', err);
+            alert('Bildirimler kapatılırken bir hata oluştu.');
+        }
+    };
 
   return (
     <div className="h-full flex flex-col bg-page dark:bg-page-dark animate-slide-up overflow-y-auto pb-20">
       
+      {/* Image Picker Modal for Avatar */}
+      <ImagePickerModal
+          isVisible={avatarImagePicker.isPickerVisible}
+          onClose={() => avatarImagePicker.setPickerVisible(false)}
+          onSelectCamera={() => avatarImagePicker.pickImage('camera')}
+          onSelectGallery={() => avatarImagePicker.pickImage('gallery')}
+      />
+      {/* Hidden file input for web fallback */}
+      <input type="file" ref={avatarImagePicker.fileInputRef} hidden accept="image/*" onChange={avatarImagePicker.handleFileInput} />
+
       {/* Header */}
       <div className="px-6 pt-6 pb-2 flex items-center justify-between sticky top-0 bg-page/80 dark:bg-page-dark/80 backdrop-blur-xl z-10">
         <button onClick={onBack} className="p-2 -ml-2 hover:bg-surface dark:hover:bg-surface-dark rounded-full transition-colors">
@@ -490,15 +533,8 @@ export const ProfileScreen: React.FC<Props> = ({ user, onBack, onLogout, onOpenP
         {/* Profile Card */}
         <div className="flex flex-col items-center mb-8">
             {/* Clickable Avatar */}
-            <input 
-                type="file" 
-                ref={avatarInputRef} 
-                onChange={handleAvatarChange} 
-                hidden 
-                accept="image/*"
-            />
             <button 
-                onClick={() => avatarInputRef.current?.click()}
+                onClick={() => avatarImagePicker.showPicker()}
                 className="w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-accent to-accent-soft mb-4 shadow-lg relative group active:scale-95 transition-transform"
             >
                 <div className="w-full h-full rounded-full bg-page dark:bg-page-dark overflow-hidden border-4 border-page dark:border-page-dark relative">
@@ -516,7 +552,7 @@ export const ProfileScreen: React.FC<Props> = ({ user, onBack, onLogout, onOpenP
                     </div>
                 </div>
 
-                {user.isPremium && (
+                {isPremium && (
                     <div className="absolute bottom-0 right-0 bg-accent text-white p-2 rounded-full border-4 border-page dark:border-page-dark shadow-sm z-10">
                         <Crown size={14} fill="currentColor" />
                     </div>
@@ -550,6 +586,27 @@ export const ProfileScreen: React.FC<Props> = ({ user, onBack, onLogout, onOpenP
             </div>
         </div>
 
+                {/* Local Notifications CTA */}
+                <div className="bg-surface dark:bg-surface-dark p-5 rounded-2xl border border-border dark:border-border-dark mb-8">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-full bg-page dark:bg-page-dark flex items-center justify-center text-accent">
+                            <Bell size={18} />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-primary dark:text-primary-dark">Bildirimler</h3>
+                            <p className="text-xs text-secondary dark:text-secondary-dark">Test bildirimi planlamak için izni aç.</p>
+                        </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <Button onClick={handleEnableNotifications} icon={Bell}>
+                            Bildirimleri Aç (Test)
+                        </Button>
+                        <Button onClick={handleDisableNotifications} variant="secondary" icon={BellOff}>
+                            Bildirimleri Kapat
+                        </Button>
+                    </div>
+                </div>
+
         {/* Premium Body Measurements Feature */}
         <BodyMeasurementsCard 
             user={user} 
@@ -572,12 +629,12 @@ export const ProfileScreen: React.FC<Props> = ({ user, onBack, onLogout, onOpenP
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <div className="text-[10px] uppercase tracking-[0.2em] opacity-70 mb-1">Mevcut Plan</div>
-                            <div className="text-2xl font-serif italic">{user.isPremium ? 'Lova Premium' : 'Lova Free'}</div>
+                            <div className="text-2xl font-serif italic">{isPremium ? 'Lova Premium' : 'Lova Free'}</div>
                         </div>
-                        {user.isPremium && <Crown size={24} className="text-accent" />}
+                        {isPremium && <Crown size={24} className="text-accent" />}
                     </div>
                     
-                    {user.isPremium ? (
+                    {isPremium ? (
                         <div className="text-sm opacity-80 font-light">
                             Üyeliğiniz <span className="font-bold text-accent">{subEndDate}</span> tarihine kadar aktiftir.
                         </div>

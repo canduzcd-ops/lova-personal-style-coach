@@ -1,11 +1,12 @@
-
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button, Input } from '../components/Shared';
 import { authService } from '../services/authService';
 import { UserProfile } from '../types';
 import { OnboardingFlow } from './OnboardingFlow';
 import { LegalModal } from './LegalScreens';
+import { setAppLanguage } from '../src/i18n';
 
 interface Props {
   onLogin: (user: UserProfile) => void;
@@ -15,7 +16,9 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
   const [view, setView] = useState<'login' | 'register' | 'forgot'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
+  const { t, i18n } = useTranslation();
+
   // Legal Modals
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -23,194 +26,289 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
   // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [name] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
 
+  const [onboardingMode, setOnboardingMode] = useState(false);
+
   useEffect(() => {
-     const savedEmail = localStorage.getItem('lova_remember_me_email');
-     if (savedEmail) {
-         setEmail(savedEmail);
-         setRememberMe(true);
-     }
+    const savedEmail = localStorage.getItem('lova_remember_me_email');
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
   }, []);
+
+  const currentLang: 'tr' | 'en' =
+    (i18n.resolvedLanguage || i18n.language || '').startsWith('en') ? 'en' : 'tr';
+
+  const setLang = async (lng: 'tr' | 'en') => {
+    try {
+      await setAppLanguage(lng);
+    } catch (e) {
+      console.error('changeLanguage error:', e);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-        const user = await authService.login(email, password);
-        if (rememberMe) localStorage.setItem('lova_remember_me_email', email);
-        else localStorage.removeItem('lova_remember_me_email');
-        onLogin(user);
+      const user = await authService.login(email, password);
+      if (rememberMe) localStorage.setItem('lova_remember_me_email', email);
+      else localStorage.removeItem('lova_remember_me_email');
+      onLogin(user);
     } catch (err: any) {
-        setError(err.message || "Giriş başarısız.");
+      setError(err.message || t('auth.alerts.loginFailed', 'Giriş başarısız.'));
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
   const handleRegister = async (data: { name: string; styles: string[] }) => {
-      setLoading(true);
-      try {
-          const user = await authService.register(email, password, data.name, data.styles);
-          if (user) onLogin(user);
-          else {
-              alert("Kayıt başarılı! Lütfen e-postanızı doğrulayın.");
-              setView('login');
-          }
-      } catch (err: any) {
-          setError(err.message);
-          setView('register'); 
-      } finally {
-          setLoading(false);
+    setLoading(true);
+    setOnboardingMode(false);
+    try {
+      const user = await authService.register(email, password, data.name, data.styles);
+      if (user) onLogin(user);
+      else {
+        alert(t('auth.alerts.registerSuccessVerify', 'Kayıt başarılı! Lütfen e-postanı doğrula.'));
+        setView('login');
       }
+    } catch (err: any) {
+      console.error('Register error:', err);
+      setError(err.message || t('auth.alerts.registerFailed', 'Kayıt hatası.'));
+      setView('register');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const [onboardingMode, setOnboardingMode] = useState(false);
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanedEmail = email.trim();
+    if (!cleanedEmail) return setError(t('auth.alerts.emailRequired'));
+    setLoading(true);
+    setError(null);
+    try {
+      await authService.resetPassword(cleanedEmail);
+      alert(t('auth.alerts.resetSuccess'));
+      setView('login');
+    } catch (err: any) {
+      setError(err.message || t('auth.alerts.resetFailed', 'Şifre sıfırlama e-postası gönderilemedi.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const startRegister = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!email || !password) return setError("E-posta ve şifre gerekli.");
-      const pwCheck = authService.validatePassword(password);
-      if (!pwCheck.valid) return setError(pwCheck.error || "Şifre zayıf.");
-      setOnboardingMode(true);
+    e.preventDefault();
+    if (!email || !password) return setError(t('auth.alerts.emailRequired'));
+    const pwCheck = authService.validatePassword(password);
+    if (!pwCheck.valid) return setError(pwCheck.error || t('auth.alerts.weakPassword', 'Şifre zayıf.'));
+    setOnboardingMode(true);
   };
 
   if (onboardingMode) {
-      return <OnboardingFlow onComplete={handleRegister} initialName={name} />;
+    return <OnboardingFlow onComplete={handleRegister} initialName={name} />;
   }
 
   return (
     <div className="relative h-full w-full bg-page dark:bg-page-dark transition-colors duration-500 overflow-hidden font-sans">
-        
-        {/* FULL SCREEN BACKGROUND IMAGE */}
-        <div className="absolute inset-0 z-0">
-            <img 
-                // High-res Silk/Nude Texture Image
-                src="https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=2576&auto=format&fit=crop" 
-                className="w-full h-full object-cover object-center"
-                alt="Editorial Texture"
-            />
-            {/* Subtle Gradient Overlay for Text Readability */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/10"></div>
-        </div>
+      {/* TR/EN SWITCHER (Dashboard parity) */}
+      <div className="absolute top-4 right-4 z-[999999] pointer-events-auto" style={{ WebkitTapHighlightColor: 'transparent' }}>
+        <div className="flex gap-1 bg-black/20 backdrop-blur-xl border border-white/20 rounded-full p-1">
+          <button
+            type="button"
+            onClick={() => setLang('tr')}
+            className={`px-3 py-1 rounded-full text-[10px] font-bold ${
+              currentLang === 'tr' ? 'bg-white text-black' : 'text-white/90'
+            }`}
+          >
+            TR
+          </button>
 
-        {/* LOGO AREA (Floating Top) */}
-        <div className="absolute top-0 left-0 right-0 z-10 pt-16 text-center">
-            <h1 className="text-6xl font-serif text-white tracking-tighter drop-shadow-md animate-fade-in">LOVA</h1>
-            <p className="text-[10px] font-bold text-white/90 uppercase tracking-[0.4em] mt-2 drop-shadow-sm animate-slide-up" style={{animationDelay: '0.1s'}}>
-                Personal Style Coach
+          <button
+            type="button"
+            onClick={() => setLang('en')}
+            className={`px-3 py-1 rounded-full text-[10px] font-bold ${
+              currentLang === 'en' ? 'bg-white text-black' : 'text-white/90'
+            }`}
+          >
+            EN
+          </button>
+        </div>
+      </div>
+
+      {/* FULL SCREEN BACKGROUND IMAGE */}
+      <div className="absolute inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=2576&auto=format&fit=crop"
+          className="w-full h-full object-cover object-center"
+          alt="Editorial Texture"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/10" />
+      </div>
+
+      {/* LOGO AREA */}
+      <div className="absolute top-0 left-0 right-0 z-10 pt-16 text-center pointer-events-none">
+        <h1 className="text-6xl font-serif text-white tracking-tighter drop-shadow-md animate-fade-in">LOVA</h1>
+        <p
+          className="text-[10px] font-bold text-white/90 uppercase tracking-[0.4em] mt-2 drop-shadow-sm animate-slide-up"
+          style={{ animationDelay: '0.1s' }}
+        >
+          {t('auth.brand.tagline', 'Personal Style Coach')}
+        </p>
+      </div>
+
+      {/* CONTENT BOTTOM SHEET */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col justify-end h-full pointer-events-none">
+        <div className="pointer-events-auto bg-page/60 dark:bg-page-dark/70 backdrop-blur-2xl rounded-t-[40px] px-8 pt-8 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] animate-slide-up max-h-[75vh] overflow-y-auto no-scrollbar border-t border-white/20">
+          <div className="mb-6 text-center">
+            <h2 className="text-3xl font-serif text-primary dark:text-primary-dark">
+         {view === 'login'
+  ? t('auth.title.login')
+  : view === 'register'
+  ? t('auth.title.register')
+  : t('auth.title.forgot')}
+            </h2>
+            <div className="w-12 h-1 bg-accent rounded-full mx-auto mt-3 mb-2" />
+            <p className="text-sm text-secondary dark:text-secondary-dark font-light">
+              {view === 'login'
+                ? t('auth.subtitle.login')
+                : view === 'register'
+                ? t('auth.subtitle.register')
+                : t('auth.subtitle.forgot')}
             </p>
-        </div>
+          </div>
 
-        {/* CONTENT BOTTOM SHEET (Glassmorphism) */}
-        <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col justify-end h-full pointer-events-none">
-            
-            {/* The Form Container - Transparency maintained */}
-            <div className="pointer-events-auto bg-page/60 dark:bg-page-dark/70 backdrop-blur-2xl rounded-t-[40px] px-8 pt-8 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] animate-slide-up max-h-[75vh] overflow-y-auto no-scrollbar border-t border-white/20">
-                
-                {/* Header Text */}
-                <div className="mb-6 text-center">
-                    <h2 className="text-3xl font-serif text-primary dark:text-primary-dark">
-                        {view === 'login' ? 'Tekrar Hoşgeldin' : (view === 'register' ? 'Üyelik Oluştur' : 'Şifre Sıfırla')}
-                    </h2>
-                    <div className="w-12 h-1 bg-accent rounded-full mx-auto mt-3 mb-2"></div>
-                    <p className="text-sm text-secondary dark:text-secondary-dark font-light">
-                        {view === 'login' ? 'Stil yolculuğuna kaldığın yerden devam et.' : 'Sana özel stil önerileri için katıl.'}
-                    </p>
-                </div>
-
-                {error && (
-                    <div className="mb-6 flex items-center gap-3 text-red-600 dark:text-red-400 text-xs bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-900/20 animate-scale-in">
-                        <AlertCircle size={16} /> {error}
-                    </div>
-                )}
-
-                <form onSubmit={view === 'login' ? handleLogin : (view === 'register' ? startRegister : (e) => e.preventDefault())} className="space-y-2">
-                    <Input 
-                        label="E-POSTA ADRESİ" 
-                        value={email} 
-                        onChange={setEmail} 
-                        placeholder="isim@ornek.com" 
-                        type="email"
-                        // FULLY TRANSPARENT INPUTS
-                        className="!bg-transparent border border-white/30 focus:border-accent text-primary dark:text-white placeholder:text-secondary/60"
-                    />
-
-                    {view !== 'forgot' && (
-                        <Input 
-                            label="ŞİFRE" 
-                            value={password} 
-                            onChange={setPassword} 
-                            placeholder="••••••••" 
-                            type="password"
-                            // FULLY TRANSPARENT INPUTS
-                            className="!bg-transparent border border-white/30 focus:border-accent text-primary dark:text-white placeholder:text-secondary/60"
-                        />
-                    )}
-
-                    {/* Options Row */}
-                    {view === 'login' && (
-                        <div className="flex items-center justify-between mb-8 mt-2 pl-1 pr-1">
-                            <button 
-                                type="button" 
-                                onClick={() => setRememberMe(!rememberMe)}
-                                className="flex items-center gap-2 group"
-                            >
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors duration-300 ${rememberMe ? 'bg-accent border-accent' : 'border-secondary/40 dark:border-secondary-dark'}`}>
-                                    {rememberMe && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
-                                </div>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-secondary dark:text-secondary-dark group-hover:text-primary dark:group-hover:text-primary-dark transition-colors">Beni Hatırla</span>
-                            </button>
-                            
-                            <button type="button" onClick={() => setView('forgot')} className="text-[10px] font-bold uppercase tracking-wider text-secondary dark:text-secondary-dark hover:text-accent transition-colors">
-                                Şifremi Unuttum
-                            </button>
-                        </div>
-                    )}
-
-                    <Button 
-                        type="submit" 
-                        disabled={loading} 
-                        className="mb-4 !rounded-2xl shadow-xl hover:shadow-glow !py-4"
-                    >
-                        {loading ? <Loader2 className="animate-spin" size={20} /> : (
-                            view === 'login' ? 'GİRİŞ YAP' : (view === 'register' ? 'DEVAM ET' : 'GÖNDER')
-                        )}
-                    </Button>
-                </form>
-
-                {/* Footer Links */}
-                <div className="mt-2 text-center pt-4 border-t border-primary/5 dark:border-white/5">
-                    {view === 'login' && (
-                        <p className="text-secondary dark:text-secondary-dark text-xs">
-                            Hesabın yok mu? <button onClick={() => { setView('register'); setError(null); }} className="text-primary dark:text-primary-dark font-bold ml-1 hover:underline decoration-accent underline-offset-4">Hemen Katıl</button>
-                        </p>
-                    )}
-                    {view === 'register' && (
-                        <p className="text-secondary dark:text-secondary-dark text-xs">
-                            Zaten üye misin? <button onClick={() => { setView('login'); setError(null); }} className="text-primary dark:text-primary-dark font-bold ml-1 hover:underline decoration-accent underline-offset-4">Giriş Yap</button>
-                        </p>
-                    )}
-                    {view === 'forgot' && (
-                        <button onClick={() => setView('login')} className="text-primary dark:text-primary-dark text-xs font-bold hover:underline decoration-accent underline-offset-4 flex items-center justify-center gap-2 mx-auto">
-                            <ArrowRight size={12} className="rotate-180"/> Giriş Ekranına Dön
-                        </button>
-                    )}
-                    
-                    {/* Legal Links */}
-                    <div className="flex items-center justify-center gap-6 mt-6 opacity-60">
-                        <button onClick={() => setShowPrivacy(true)} className="text-[9px] font-bold uppercase text-secondary hover:text-primary transition-colors">Gizlilik Politikası</button>
-                        <span className="w-1 h-1 rounded-full bg-secondary"></span>
-                        <button onClick={() => setShowTerms(true)} className="text-[9px] font-bold uppercase text-secondary hover:text-primary transition-colors">Kullanım Koşulları</button>
-                    </div>
-                </div>
+          {error && (
+            <div className="mb-6 flex items-center gap-3 text-red-600 dark:text-red-400 text-xs bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-900/20 animate-scale-in">
+              <AlertCircle size={16} /> {error}
             </div>
-        </div>
+          )}
 
-        {/* Legal Modals */}
-        {showPrivacy && <LegalModal type="privacy" onClose={() => setShowPrivacy(false)} />}
-        {showTerms && <LegalModal type="terms" onClose={() => setShowTerms(false)} />}
+          <form
+            onSubmit={view === 'login' ? handleLogin : view === 'register' ? startRegister : handleForgotPassword}
+            className="space-y-2"
+          >
+            <Input
+              label={t('auth.emailLabel')}
+              value={email}
+              onChange={setEmail}
+              placeholder={t('auth.emailPlaceholder', 'isim@ornek.com')}
+              type="email"
+              className="!bg-transparent border border-white/30 focus:border-accent text-primary dark:text-white placeholder:text-secondary/60"
+            />
+
+            {view !== 'forgot' && (
+              <Input
+                label={t('auth.passwordLabel')}
+                value={password}
+                onChange={setPassword}
+                placeholder="••••••••"
+                type="password"
+                className="!bg-transparent border border-white/30 focus:border-accent text-primary dark:text-white placeholder:text-secondary/60"
+              />
+            )}
+
+            {view === 'login' && (
+              <div className="flex items-center justify-between mb-8 mt-2 pl-1 pr-1">
+                <button type="button" onClick={() => setRememberMe(!rememberMe)} className="flex items-center gap-2 group">
+                  <div
+                    className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors duration-300 ${
+                      rememberMe ? 'bg-accent border-accent' : 'border-secondary/40 dark:border-secondary-dark'
+                    }`}
+                  >
+                    {rememberMe && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-secondary dark:text-secondary-dark group-hover:text-primary dark:group-hover:text-primary-dark transition-colors">
+                    {t('auth.rememberMe')}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setView('forgot')}
+                  className="text-[10px] font-bold uppercase tracking-wider text-secondary dark:text-secondary-dark hover:text-accent transition-colors"
+                >
+                  {t('auth.forgot')}
+                </button>
+              </div>
+            )}
+
+            <Button type="submit" disabled={loading} className="mb-4 !rounded-2xl shadow-xl hover:shadow-glow !py-4">
+              {loading ? (
+                <Loader2 className="animate-spin" size={20} />
+              ) : view === 'login' ? (
+                t('auth.submit.login')
+              ) : view === 'register' ? (
+                t('auth.submit.register')
+              ) : (
+                t('auth.submit.forgot')
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-2 text-center pt-4 border-t border-primary/5 dark:border-white/5">
+            {view === 'login' && (
+              <p className="text-secondary dark:text-secondary-dark text-xs">
+                {t('auth.footer.noAccount')}{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('register');
+                    setError(null);
+                  }}
+                  className="text-primary dark:text-primary-dark font-bold ml-1 hover:underline decoration-accent underline-offset-4"
+                >
+                  {t('auth.footer.join')}
+                </button>
+              </p>
+            )}
+
+            {view === 'register' && (
+              <p className="text-secondary dark:text-secondary-dark text-xs">
+                {t('auth.footer.haveAccount')}{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('login');
+                    setError(null);
+                  }}
+                  className="text-primary dark:text-primary-dark font-bold ml-1 hover:underline decoration-accent underline-offset-4"
+                >
+                  {t('auth.footer.login')}
+                </button>
+              </p>
+            )}
+
+            {view === 'forgot' && (
+              <button
+                type="button"
+                onClick={() => setView('login')}
+                className="text-primary dark:text-primary-dark text-xs font-bold hover:underline decoration-accent underline-offset-4 flex items-center justify-center gap-2 mx-auto"
+              >
+                <ArrowRight size={12} className="rotate-180" /> {t('auth.footer.back')}
+              </button>
+            )}
+
+            <div className="flex items-center justify-center gap-6 mt-6 opacity-60">
+              <button type="button" onClick={() => setShowPrivacy(true)} className="text-[9px] font-bold uppercase text-secondary hover:text-primary transition-colors">
+                {t('auth.legal.privacy')}
+              </button>
+              <span className="w-1 h-1 rounded-full bg-secondary" />
+              <button type="button" onClick={() => setShowTerms(true)} className="text-[9px] font-bold uppercase text-secondary hover:text-primary transition-colors">
+                {t('auth.legal.terms')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showPrivacy && <LegalModal type="privacy" onClose={() => setShowPrivacy(false)} />}
+      {showTerms && <LegalModal type="terms" onClose={() => setShowTerms(false)} />}
     </div>
   );
 };

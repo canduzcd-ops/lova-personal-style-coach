@@ -165,11 +165,21 @@ export const authService = {
     },
     // Password Reset
     resetPassword: async (email) => {
+        const cleanedEmail = email.trim();
+        if (!cleanedEmail)
+            throw new Error("Geçerli bir e-posta adresi girin.");
         try {
-            await auth.sendPasswordResetEmail(email);
+            await auth.sendPasswordResetEmail(cleanedEmail);
         }
         catch (error) {
-            throw new Error("Şifre sıfırlama e-postası gönderilemedi.");
+            let msg = "Şifre sıfırlama e-postası gönderilemedi.";
+            if (error?.code === 'auth/invalid-email')
+                msg = "Geçersiz e-posta adresi.";
+            else if (error?.code === 'auth/user-not-found')
+                msg = "Bu e-posta ile kayıt bulunamadı.";
+            else if (error?.code === 'auth/too-many-requests')
+                msg = "Çok fazla deneme. Bir süre sonra tekrar deneyin.";
+            throw new Error(msg);
         }
     },
     // Resend Verification

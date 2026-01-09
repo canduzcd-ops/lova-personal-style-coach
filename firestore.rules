@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && (
+          !request.resource.data.keys().hasAny(['is_premium','premium_type','subscription_end_date'])
+          || (
+            request.resource.data.is_premium == false
+            && request.resource.data.premium_type == null
+            && request.resource.data.subscription_end_date == null
+          )
+        );
+
+      allow update: if isOwner(userId)
+        && request.resource.data.is_premium == resource.data.is_premium
+        && request.resource.data.premium_type == resource.data.premium_type
+        && request.resource.data.subscription_end_date == resource.data.subscription_end_date;
+
+      allow delete: if isOwner(userId);
+    }
+
+    match /styleProfiles/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /wardrobeItems/{itemId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /outfitHistory/{docId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

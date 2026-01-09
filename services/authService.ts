@@ -181,14 +181,21 @@ export const authService = {
     return mapDocumentToUser(user.uid, newProfile);
   },
 
-  // Password Reset
-  resetPassword: async (email: string): Promise<void> => {
-    try {
-        await auth.sendPasswordResetEmail(email);
-    } catch (error: any) {
-        throw new Error("Şifre sıfırlama e-postası gönderilemedi.");
-    }
-  },
+    // Password Reset
+    resetPassword: async (email: string): Promise<void> => {
+        const cleanedEmail = email.trim();
+        if (!cleanedEmail) throw new Error("Geçerli bir e-posta adresi girin.");
+
+        try {
+                await auth.sendPasswordResetEmail(cleanedEmail);
+        } catch (error: any) {
+                let msg = "Şifre sıfırlama e-postası gönderilemedi.";
+                if (error?.code === 'auth/invalid-email') msg = "Geçersiz e-posta adresi.";
+                else if (error?.code === 'auth/user-not-found') msg = "Bu e-posta ile kayıt bulunamadı.";
+                else if (error?.code === 'auth/too-many-requests') msg = "Çok fazla deneme. Bir süre sonra tekrar deneyin.";
+                throw new Error(msg);
+        }
+    },
 
   // Resend Verification
   resendVerification: async (email: string): Promise<void> => {

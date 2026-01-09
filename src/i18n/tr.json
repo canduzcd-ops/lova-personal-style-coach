@@ -1,0 +1,208 @@
+{
+  "auth": {
+    "brand": {
+      "tagline": "Kişisel Stil Koçu"
+    },
+    "title": {
+      "login": "Tekrar Hoşgeldin",
+      "register": "Üyelik Oluştur",
+      "forgot": "Şifre Sıfırla"
+    },
+    "subtitle": {
+      "login": "Stil yolculuğuna kaldığın yerden devam et.",
+      "register": "Sana özel stil önerileri için katıl.",
+      "forgot": "Şifreni sıfırlamak için e-posta adresini gir."
+    },
+    "emailLabel": "E-POSTA ADRESİ",
+    "emailPlaceholder": "isim@ornek.com",
+    "passwordLabel": "ŞİFRE",
+    "rememberMe": "Beni Hatırla",
+    "forgot": "Şifremi Unuttum",
+    "submit": {
+      "login": "GİRİŞ YAP",
+      "register": "DEVAM ET",
+      "forgot": "SIFIRLAMA BAĞLANTISI GÖNDER"
+    },
+    "footer": {
+      "noAccount": "Hesabın yok mu?",
+      "join": "Hemen Katıl",
+      "haveAccount": "Zaten üye misin?",
+      "login": "Giriş Yap",
+      "back": "Giriş Ekranına Dön"
+    },
+    "legal": {
+      "privacy": "Gizlilik Politikası",
+      "terms": "Kullanım Koşulları"
+    },
+    "alerts": {
+      "loginFailed": "Giriş başarısız.",
+      "registerSuccessVerify": "Kayıt başarılı! Lütfen e-postanı doğrula.",
+      "registerFailed": "Kayıt sırasında hata oluştu.",
+      "resetSuccess": "Şifre sıfırlama bağlantısı e-posta adresine gönderildi. Lütfen mailini kontrol et.",
+      "resetFailed": "Şifre sıfırlama e-postası gönderilemedi.",
+      "emailRequired": "E-posta adresi gerekli.",
+      "weakPassword": "Şifre çok zayıf."
+    }
+  },
+  "onboarding": {
+    "introTitleMain": "Stilini",
+    "introTitleAccent": "Yönet.",
+    "introSubtitle": "Yapay zeka asistanın ile gardırobunu sadeleştir, her gün en iyi halinle görün.",
+    "start": "Başlayalım",
+    "detailsTitle": "Tanışalım",
+    "detailsSubtitle": "Sana özel öneriler sunabilmemiz için.",
+    "nameLabel": "Adın Nedir?",
+    "namePlaceholder": "İsmini gir...",
+    "stylesLabel": "Hangi stilleri seversin?",
+    "ctaFinish": "Uygulamaya Gir"
+  },
+  "lang": {
+    "tr": "TR",
+    "en": "EN"
+  },
+  "dashboard": {
+    "menu": {
+      "title": "Menü",
+      "theme": "Tema",
+      "notifications": "Bildirimler",
+      "language": "TR / EN",
+      "premium": "Premium'a Geç",
+      "logout": "Çıkış Yap"
+    },
+    "notifications": {
+      "disabled": "Bildirimler kapatıldı.",
+      "enabledTitle": "Bildirimler Açık",
+      "enabledBody": "Stil önerileri aktif."
+    },
+    "alerts": {
+      "needTwoItems": "Kombin için en az 2 parça eklemelisin.",
+      "notFound": "Kombin bulunamadı.",
+      "generic": "Hata oluştu.",
+      "generateFailed": "Kombin üretilemedi.",
+      "anchorDesc": "Bu kombin, seçtiğin {{item}} parçası için özel olarak hazırlandı. {{desc}}"
+    },
+    "hero": {
+      "dailyReport": "Günlük Stil Raporu",
+      "whatToWear": "Bugün Ne Giysem?",
+      "ctaWithItems": "Gardırobundaki parçalarla sana özel bir kombin.",
+      "ctaNoItems": "Stilini keşfetmek için parçalarını ekle.",
+      "remainingTrials": "Kalan Deneme Hakkı: {{count}}",
+      "btnGenerate": "KOMBİN OLUŞTUR",
+      "btnPremium": "PREMIUM'A GEÇ",
+      "btnAddItem": "PARÇA EKLE"
+    },
+    "rating": {
+      "lockMessage": "Kombinlerini stil asistanına puanlatmak için Premium'a geç.",
+      "upgrade": "PREMIUM'A GEÇ",
+      "title": "Stilini Puanlat",
+      "subtitle": "Kombinini yükle, stil asistanın puanlasın.",
+      "processing": "İnceleniyor...",
+      "viewResult": "Sonucu Gör",
+      "upload": "Kombin Yükle",
+      "analysisFailed": "Kombin analizi yapılamadı.",
+      "resultTitle": "Stil Analiz Sonucu",
+      "close": "Harika"
+    },
+    "insights": {
+      "mantra": "Günün Mantrası",
+      "tipTitle": "Stil İpucu"
+    },
+    "discovery": {
+      "title": "Keşfet",
+      "capsule": {
+        "titleLine1": "Minimalist",
+        "titleLine2": "Kapsül",
+        "tagline": "Sezonun Vazgeçilmezleri",
+        "description": "Dolabını yormadan, her gün kombinlenebilen ana parçalar.",
+        "addThisSeason": "Bu sezonda kapsüle ekle",
+        "items": [
+          "Beyaz basic gömlek",
+          "Düz mavi jean",
+          "Nude trenchcoat",
+          "Siyah basic sneaker",
+          "Omuz çantası"
+        ],
+        "suggestionTitle": "Bugün İçin Öneri",
+        "suggestionBody": "Beyaz gömlek + düz mavi jean + nude trenchcoat + beyaz sneaker.",
+        "styleNoteTitle": "Stil Notu",
+        "styleNoteBody": "Minimal kapsülün sırrı; az parça ile maksimum kombin. Renk paletini nude, siyah, beyaz ve bir tane accent renkle sınırla."
+      },
+      "trend": {
+        "badge": "Trend",
+        "titleLine1": "Sessiz",
+        "titleLine2": "Lüks",
+        "subtitle": "Minimal, kaliteli ve gösterişsiz şıklık.",
+        "cta": "İncele"
+      },
+      "premium": {
+        "badge": "Premium",
+        "titleLine1": "Lova",
+        "titleLine2": "Plus"
+      }
+    },
+    "wardrobe": {
+      "lockedTitle": "Dolabın Kilitlendi",
+      "lockedBody": "Ücretsiz deneme kapsamında {{count}} kombin hakkını doldurdun. Dolabına erişmeye devam etmek ve sınırsız stil analizi için Premium'a geç.",
+      "upgrade": "Premium'a Geç"
+    }
+  },
+  "wardrobe": {
+    "title": "Gardırop",
+    "item": {
+      "count": "parça",
+      "unknownColor": "Bilinmeyen renk"
+    },
+    "filters": {
+      "all": "Tümü",
+      "ust": "Üst",
+      "alt": "Alt",
+      "elbise": "Elbise",
+      "dis": "Dış Giyim",
+      "ayakkabi": "Ayakkabı",
+      "aksesuar": "Aksesuar"
+    },
+    "loading": "Gardırobun yükleniyor...",
+    "empty": {
+      "title": "Gardırobun boş",
+      "body": "Kombin yapmak için ilk parçanı ekle."
+    },
+    "alerts": {
+      "nameRequired": "Lütfen parça adı girin.",
+      "confirmDelete": "Bu parçayı silmek istiyor musun?",
+      "generic": "Kaydederken bir hata oluştu."
+    },
+    "modal": {
+      "addTitle": "Parça Ekle",
+      "editTitle": "Detayları Düzenle",
+      "selectFromGallery": "Galeriden Seç",
+      "takePhoto": "Fotoğraf Çek",
+      "analyzing": "AI analiz ediyor...",
+      "nameLabel": "Parça Adı",
+      "namePlaceholderAnalyzing": "Analiz ediliyor...",
+      "namePlaceholder": "Örn: Siyah İpek Gömlek",
+      "categoryLabel": "Kategori",
+      "addButton": "Gardıroba Ekle"
+    },
+    "detail": {
+      "combine": "Bu Parçayla Kombinle"
+    }
+  },
+  "style": {
+    "fallbackStyle": "Modern",
+    "static": {
+      "title": "{{style}} Stil İpuçları",
+      "mantra": "Bugün aynadaki yansıman, içindeki gücü göstersin.",
+      "tip1": "Tek bir güçlü parça seç, geri kalan her şeyi onu parlatacak kadar sade tut.",
+      "tip2": "Tek bir 'hero' parça seç.",
+      "tip3": "Doku kontrastı ekle."
+    }
+  },
+  "imagePicker": {
+    "title": "Fotoğraf Seç",
+    "camera": "Kamera",
+    "cameraDesc": "Yeni fotoğraf çek",
+    "gallery": "Galeri",
+    "galleryDesc": "Galeriden seç",
+    "cancel": "Vazgeç"
+  }
+}

@@ -83,6 +83,10 @@ export interface WardrobeItem {
     pattern?: string;
     aesthetic?: string[];
   };
+  tagsNormalized?: {
+    styles: string[];
+    colors: string[];
+  };
 }
 
 export interface StyleOption {
@@ -116,6 +120,17 @@ export interface SuggestionResult {
     perfume: { title: string; desc: string };
   };
   additionalTips: { title: string; desc: string; icon: any }[];
+}
+
+export interface OutfitHistoryEntry {
+  id: string;
+  userId: string;
+  outfit: any;
+  weather?: any;
+  source?: string;
+  liked?: boolean | null;
+  createdAt?: string;
+  feedbackAt?: string;
 }
 
 export interface SavedOutfit {

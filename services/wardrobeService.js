@@ -1,5 +1,7 @@
 import { db, auth } from './firebaseClient';
 import firebase from "firebase/compat/app";
+import { uploadWardrobeImage } from './storageService';
+import { normalizeTagList } from './tagNormalize';
 const COLLECTION_NAME = 'wardrobeItems';
 export const wardrobeService = {
     /**
@@ -9,6 +11,16 @@ export const wardrobeService = {
         const user = auth.currentUser;
         if (!user)
             throw new Error("Kullanıcı oturumu kapalı.");
+        let imageUrl = data.image;
+        if (typeof data.image === 'string' && data.image.startsWith('data:image/')) {
+            try {
+                imageUrl = await uploadWardrobeImage(user.uid, data.image, data.name || data.type);
+            }
+            catch (err) {
+                console.error('Wardrobe image upload failed, keeping base64 inline.', err);
+                imageUrl = data.image;
+            }
+        }
         // Firestore throws error if a field value is undefined. 
         // We explicitly map optional fields to null if they are undefined.
         const aiTags = data.aiTags ? {
@@ -20,13 +32,20 @@ export const wardrobeService = {
             pattern: data.aiTags.pattern ?? null,
             aesthetic: data.aiTags.aesthetic ?? []
         } : null;
+        const stylesSource = data.styleTags ?? aiTags?.style ?? aiTags?.aesthetic ?? [];
+        const colorsSource = data.colorTags ?? (data.color ? [data.color] : []);
+        const tagsNormalized = {
+            styles: normalizeTagList(stylesSource),
+            colors: normalizeTagList(colorsSource),
+        };
         const payload = {
             type: data.type,
             name: data.name,
             color: data.color ?? null,
             note: data.note ?? null,
-            image: data.image ?? null,
+            image: imageUrl ?? null,
             aiTags: aiTags,
+            tagsNormalized,
             userId: user.uid,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
@@ -37,6 +56,8 @@ export const wardrobeService = {
                 id: docRef.id,
                 userId: user.uid,
                 ...data,
+                image: imageUrl ?? undefined,
+                tagsNormalized,
                 createdAt: new Date().toISOString() // Approximate for immediate UI update
             };
         }
@@ -55,6 +76,8 @@ export const wardrobeService = {
         try {
             const querySnapshot = await db.collection(COLLECTION_NAME)
                 .where("userId", "==", user.uid)
+                .orderBy("createdAt", "desc")
+                .limit(100)
                 .get();
             const items = [];
             querySnapshot.forEach((doc) => {
@@ -68,6 +91,7 @@ export const wardrobeService = {
                     image: data.image || undefined, // Map null back to undefined
                     userId: data.userId,
                     aiTags: data.aiTags || undefined,
+                    tagsNormalized: data.tagsNormalized || undefined,
                     createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || undefined)
                 });
             });
@@ -100,6 +124,15 @@ export const wardrobeService = {
                 }
                 return acc;
             }, {});
+            const aiTagsUpdate = updates.aiTags;
+            const stylesUpdateSource = updates.styleTags ?? aiTagsUpdate?.style ?? aiTagsUpdate?.aesthetic;
+            const colorsUpdateSource = updates.colorTags ?? updates.color;
+            if (stylesUpdateSource !== undefined || colorsUpdateSource !== undefined) {
+                cleanUpdates.tagsNormalized = {
+                    styles: normalizeTagList(stylesUpdateSource ?? []),
+                    colors: normalizeTagList(colorsUpdateSource ? [colorsUpdateSource].flat() : []),
+                };
+            }
             await docRef.update({
                 ...cleanUpdates,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()

@@ -1,0 +1,208 @@
+{
+  "auth": {
+    "brand": {
+      "tagline": "Personal Style Coach"
+    },
+    "title": {
+      "login": "Welcome Back",
+      "register": "Create Account",
+      "forgot": "Reset Password"
+    },
+    "subtitle": {
+      "login": "Continue your style journey where you left off.",
+      "register": "Join to get personalized style tips.",
+      "forgot": "Enter your email to reset your password."
+    },
+    "emailLabel": "EMAIL ADDRESS",
+    "emailPlaceholder": "name@example.com",
+    "passwordLabel": "PASSWORD",
+    "rememberMe": "Remember Me",
+    "forgot": "Forgot Password",
+    "submit": {
+      "login": "SIGN IN",
+      "register": "CONTINUE",
+      "forgot": "SEND RESET LINK"
+    },
+    "footer": {
+      "noAccount": "Don't have an account?",
+      "join": "Join Now",
+      "haveAccount": "Already a member?",
+      "login": "Sign In",
+      "back": "Back to Login"
+    },
+    "legal": {
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Use"
+    },
+    "alerts": {
+      "loginFailed": "Sign in failed.",
+      "registerSuccessVerify": "Registration successful! Please verify your email.",
+      "registerFailed": "Registration failed.",
+      "resetSuccess": "Password reset link sent to your email. Please check your inbox.",
+      "resetFailed": "Could not send the password reset email.",
+      "emailRequired": "Email is required.",
+      "weakPassword": "Password is too weak."
+    }
+  },
+  "onboarding": {
+    "introTitleMain": "Own Your",
+    "introTitleAccent": "Style.",
+    "introSubtitle": "Simplify your wardrobe with your AI stylist and look your best every day.",
+    "start": "Let's Start",
+    "detailsTitle": "Let's Meet",
+    "detailsSubtitle": "So we can tailor recommendations just for you.",
+    "nameLabel": "What's your name?",
+    "namePlaceholder": "Enter your name...",
+    "stylesLabel": "Which styles do you love?",
+    "ctaFinish": "Enter the App"
+  },
+  "lang": {
+    "tr": "TR",
+    "en": "EN"
+  },
+  "dashboard": {
+    "menu": {
+      "title": "Menu",
+      "theme": "Theme",
+      "notifications": "Notifications",
+      "language": "TR / EN",
+      "premium": "Go Premium",
+      "logout": "Sign Out"
+    },
+    "notifications": {
+      "disabled": "Notifications disabled.",
+      "enabledTitle": "Notifications On",
+      "enabledBody": "Style tips are active."
+    },
+    "alerts": {
+      "needTwoItems": "Add at least 2 items to create an outfit.",
+      "notFound": "No outfit found.",
+      "generic": "Something went wrong.",
+      "generateFailed": "Could not generate an outfit.",
+      "anchorDesc": "This look is tailored for your {{item}}. {{desc}}"
+    },
+    "hero": {
+      "dailyReport": "Daily Style Report",
+      "whatToWear": "What to Wear Today?",
+      "ctaWithItems": "A custom outfit from your wardrobe.",
+      "ctaNoItems": "Add pieces to start your style journey.",
+      "remainingTrials": "Trials left: {{count}}",
+      "btnGenerate": "CREATE OUTFIT",
+      "btnPremium": "GO PREMIUM",
+      "btnAddItem": "ADD ITEM"
+    },
+    "rating": {
+      "lockMessage": "Go Premium to get your looks rated by the stylist.",
+      "upgrade": "GO PREMIUM",
+      "title": "Rate My Style",
+      "subtitle": "Upload your outfit, let the stylist rate it.",
+      "processing": "Reviewing...",
+      "viewResult": "View Result",
+      "upload": "Upload Look",
+      "analysisFailed": "Style analysis failed.",
+      "resultTitle": "Style Analysis Result",
+      "close": "Great"
+    },
+    "insights": {
+      "mantra": "Mantra of the Day",
+      "tipTitle": "Style Tip"
+    },
+    "discovery": {
+      "title": "Discover",
+      "capsule": {
+        "titleLine1": "Minimalist",
+        "titleLine2": "Capsule",
+        "tagline": "Season Essentials",
+        "description": "Lightweight wardrobe staples you can mix daily.",
+        "addThisSeason": "Add this season",
+        "items": [
+          "White basic shirt",
+          "Straight blue jeans",
+          "Nude trench coat",
+          "Black basic sneakers",
+          "Shoulder bag"
+        ],
+        "suggestionTitle": "Today's Suggestion",
+        "suggestionBody": "White shirt + straight blue jeans + nude trench coat + white sneakers.",
+        "styleNoteTitle": "Style Note",
+        "styleNoteBody": "The secret of a capsule: fewer pieces, max outfits. Keep colors to nude, black, white, plus one accent hue."
+      },
+      "trend": {
+        "badge": "Trend",
+        "titleLine1": "Quiet",
+        "titleLine2": "Luxury",
+        "subtitle": "Minimal, high quality, understated chic.",
+        "cta": "View"
+      },
+      "premium": {
+        "badge": "Premium",
+        "titleLine1": "Lova",
+        "titleLine2": "Plus"
+      }
+    },
+    "wardrobe": {
+      "lockedTitle": "Wardrobe Locked",
+      "lockedBody": "You used your {{count}} trial outfits. Go Premium to keep accessing your wardrobe and unlimited style analysis.",
+      "upgrade": "Go Premium"
+    }
+  },
+  "wardrobe": {
+    "title": "Wardrobe",
+    "item": {
+      "count": "items",
+      "unknownColor": "Unknown color"
+    },
+    "filters": {
+      "all": "All",
+      "ust": "Tops",
+      "alt": "Bottoms",
+      "elbise": "Dresses",
+      "dis": "Outerwear",
+      "ayakkabi": "Shoes",
+      "aksesuar": "Accessories"
+    },
+    "loading": "Loading wardrobe...",
+    "empty": {
+      "title": "Your wardrobe is empty",
+      "body": "Add your first pieces to start creating outfits."
+    },
+    "alerts": {
+      "nameRequired": "Please enter a name.",
+      "confirmDelete": "Remove this item?",
+      "generic": "Something went wrong while saving."
+    },
+    "modal": {
+      "addTitle": "Add Item",
+      "editTitle": "Edit Details",
+      "selectFromGallery": "Choose from Gallery",
+      "takePhoto": "Take Photo",
+      "analyzing": "AI is analyzing...",
+      "nameLabel": "Item Name",
+      "namePlaceholderAnalyzing": "Analyzing...",
+      "namePlaceholder": "e.g., Black Silk Shirt",
+      "categoryLabel": "Category",
+      "addButton": "Add to Wardrobe"
+    },
+    "detail": {
+      "combine": "Style with this item"
+    }
+  },
+  "style": {
+    "fallbackStyle": "Modern",
+    "static": {
+      "title": "{{style}} Style Tips",
+      "mantra": "Let your reflection in the mirror today show the power within you.",
+      "tip1": "Choose one strong statement piece, and keep everything else simple enough to let it shine.",
+      "tip2": "Choose one hero piece.",
+      "tip3": "Add texture contrast."
+    }
+  },
+  "imagePicker": {
+    "title": "Select Photo",
+    "camera": "Camera",
+    "cameraDesc": "Take a new photo",
+    "gallery": "Gallery",
+    "galleryDesc": "Choose from gallery",
+    "cancel": "Cancel"
+  }
+}

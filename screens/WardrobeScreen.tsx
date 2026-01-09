@@ -7,6 +7,9 @@ import { WARDROBE_CATEGORIES } from '../constants';
 import { analyzeImage } from '../services/aiService';
 import { authService } from '../services/authService';
 import { wardrobeService } from '../services/wardrobeService';
+import { useTranslation } from 'react-i18next';
+import { useImagePicker } from '../hooks/useImagePicker';
+import { ImagePickerModal } from '../components/ImagePickerModal';
 
 // Simplified compression logic
 const compressImage = (base64: string): Promise<string> => {
@@ -85,6 +88,7 @@ interface Props {
 }
 
 export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdate, onTriggerPremium, onGenerateWithItem }) => {
+    const { t } = useTranslation();
   const [items, setItems] = useState<WardrobeItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -100,8 +104,31 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
   const [newItemType, setNewItemType] = useState('ust');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Image Picker Hook
+  const handleImageSelected = async (base64: string) => {
+    setAddItemStep('preview');
+    setIsAnalyzing(true);
+    setNewItemImg(base64);
+    
+    // AI Analysis
+    try {
+        const res = await analyzeImage(base64);
+        if(res) { 
+            setNewItemName(res.name); 
+            setNewItemType(res.type); 
+        }
+    } catch (err) {
+        console.error("AI Analysis Failed", err);
+    } finally {
+        setIsAnalyzing(false);
+    }
+  };
+
+  const imagePicker = useImagePicker({
+    onImageSelected: handleImageSelected,
+    onError: (err) => console.error('Image picker error:', err),
+  });
 
   // Scroll Lock Effect
   useEffect(() => {
@@ -138,56 +165,24 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
       }, 300);
   };
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if(!file) return;
-
-      setAddItemStep('preview');
-      setIsAnalyzing(true);
-      
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-          const base64 = ev.target?.result as string;
-          const compressed = await compressImage(base64);
-          setNewItemImg(compressed);
-          
-          // AI Analysis
-          try {
-              const res = await analyzeImage(base64);
-              if(res) { 
-                  setNewItemName(res.name); 
-                  setNewItemType(res.type); 
-              }
-          } catch (err) {
-              console.error("AI Analysis Failed", err);
-          } finally {
-              setIsAnalyzing(false);
-          }
-      };
-      reader.readAsDataURL(file);
-      
-      // Reset input so same file can be selected again if needed
-      if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
   const handleSave = async () => {
-      if(!newItemName) return alert("İsim gerekli");
+    if(!newItemName) return alert(t('wardrobe.alerts.nameRequired'));
       setIsSaving(true);
       try {
          const newItem = await wardrobeService.addWardrobeItem({
-             name: newItemName, type: newItemType, image: newItemImg || undefined, color: 'Bilinmiyor', aiTags: undefined
+             name: newItemName, type: newItemType, image: newItemImg || undefined, color: t('wardrobe.item.unknownColor'), aiTags: undefined
          });
          setItems(prev => [newItem, ...prev]);
          updateUser(await authService.incrementUsage(user, 'wardrobe'));
          
          resetAddModal();
 
-      } catch(e) { alert("Hata oluştu"); }
+    } catch(e) { alert(t('wardrobe.alerts.generic')); }
       setIsSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-      if(!confirm("Bu parçayı silmek istediğine emin misin?")) return;
+    if(!confirm(t('wardrobe.alerts.confirmDelete'))) return;
       await wardrobeService.deleteWardrobeItem(id);
       setItems(prev => prev.filter(i => i.id !== id));
       setSelectedItem(null);
@@ -199,19 +194,19 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
         {/* Header & Filter Bar */}
         <div className="pt-2 pb-2 px-4 bg-page/95 dark:bg-page-dark/95 backdrop-blur-sm sticky top-0 z-30 border-b border-border dark:border-border-dark transition-colors">
              <div className="flex justify-between items-center mb-4 mt-2">
-                 <h2 className="text-xl font-serif font-bold text-primary dark:text-primary-dark">Dolabım</h2>
+                 <h2 className="text-xl font-serif font-bold text-primary dark:text-primary-dark">{t('wardrobe.title')}</h2>
                  <div className="flex gap-2">
                     <div className="px-3 py-1.5 bg-surface dark:bg-surface-dark rounded-full text-[10px] font-bold text-secondary border border-border dark:border-border-dark">
-                        {items.length} Parça
+                        {items.length} {t('wardrobe.item.count')}
                     </div>
                  </div>
              </div>
              
              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                 <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${filter === 'all' ? 'bg-primary text-white border-primary shadow-lg scale-105' : 'bg-surface dark:bg-surface-dark text-secondary dark:text-secondary-dark border-transparent hover:bg-border/50'}`}>Tümü</button>
+                 <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${filter === 'all' ? 'bg-primary text-white border-primary shadow-lg scale-105' : 'bg-surface dark:bg-surface-dark text-secondary dark:text-secondary-dark border-transparent hover:bg-border/50'}`}>{t('wardrobe.filters.all')}</button>
                  {WARDROBE_CATEGORIES.map(cat => (
                      <button key={cat.id} onClick={() => setFilter(cat.id)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${filter === cat.id ? 'bg-primary text-white border-primary shadow-lg scale-105' : 'bg-surface dark:bg-surface-dark text-secondary dark:text-secondary-dark border-transparent hover:bg-border/50'}`}>
-                         {cat.label}
+                         {t(`wardrobe.filters.${cat.id}`, cat.label)}
                      </button>
                  ))}
              </div>
@@ -222,15 +217,15 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
             {loadingItems ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
                     <Loader2 className="animate-spin text-accent" size={32}/>
-                    <p className="text-xs text-secondary font-medium tracking-widest uppercase">Dolap Yükleniyor</p>
+                    <p className="text-xs text-secondary font-medium tracking-widest uppercase">{t('wardrobe.loading')}</p>
                 </div>
             ) : filteredItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="w-20 h-20 bg-surface dark:bg-surface-dark rounded-full flex items-center justify-center mb-6 animate-pulse">
                         <Shirt size={32} className="text-border dark:text-border-dark"/>
                     </div>
-                    <p className="text-primary dark:text-primary-dark font-serif text-lg mb-2">Dolabın Boş</p>
-                    <p className="text-secondary dark:text-secondary-dark text-sm max-w-[200px]">Sağ alttaki + butonuna basarak ilk parçanı ekle.</p>
+                    <p className="text-primary dark:text-primary-dark font-serif text-lg mb-2">{t('wardrobe.empty.title')}</p>
+                    <p className="text-secondary dark:text-secondary-dark text-sm max-w-[200px]">{t('wardrobe.empty.body')}</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-in">
@@ -251,7 +246,8 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
             </button>
         </div>
 
-        <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFile} />
+        {/* Hidden file input for web fallback */}
+        <input type="file" ref={imagePicker.fileInputRef} hidden accept="image/*" onChange={imagePicker.handleFileInput} />
 
         {/* ADD ITEM BOTTOM SHEET */}
         {isAdding && (
@@ -269,7 +265,7 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
 
                     <div className="flex justify-between items-center mb-6 shrink-0">
                         <h3 className="text-2xl font-serif font-bold text-primary dark:text-primary-dark">
-                            {addItemStep === 'source' ? 'Parça Ekle' : 'Detayları Düzenle'}
+                            {addItemStep === 'source' ? t('wardrobe.modal.addTitle') : t('wardrobe.modal.editTitle')}
                         </h3>
                         <button onClick={resetAddModal} className="p-2 bg-surface dark:bg-surface-dark rounded-full hover:bg-border transition-colors">
                             <X size={20} className="text-primary dark:text-primary-dark"/>
@@ -279,23 +275,23 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
                     {addItemStep === 'source' ? (
                         <div className="grid grid-cols-2 gap-4 mb-8">
                             <button 
-                                onClick={() => fileInputRef.current?.click()} 
+                                onClick={() => imagePicker.pickImage('gallery')} 
                                 className="flex flex-col items-center justify-center gap-3 p-8 bg-surface dark:bg-surface-dark border-2 border-dashed border-border dark:border-border-dark rounded-3xl hover:bg-page dark:hover:bg-page-dark/50 transition-colors group"
                             >
                                 <div className="w-12 h-12 bg-white dark:bg-white/10 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                                     <ImageIcon size={24} className="text-accent" />
                                 </div>
-                                <span className="font-bold text-sm text-primary dark:text-primary-dark">Galeriden Seç</span>
+                                <span className="font-bold text-sm text-primary dark:text-primary-dark">{t('wardrobe.modal.selectFromGallery')}</span>
                             </button>
                             
                             <button 
-                                onClick={() => fileInputRef.current?.click()} // Camera uses same input on mobile usually
+                                onClick={() => imagePicker.pickImage('camera')}
                                 className="flex flex-col items-center justify-center gap-3 p-8 bg-surface dark:bg-surface-dark border-2 border-dashed border-border dark:border-border-dark rounded-3xl hover:bg-page dark:hover:bg-page-dark/50 transition-colors group"
                             >
                                 <div className="w-12 h-12 bg-white dark:bg-white/10 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                                     <Camera size={24} className="text-accent" />
                                 </div>
-                                <span className="font-bold text-sm text-primary dark:text-primary-dark">Fotoğraf Çek</span>
+                                <span className="font-bold text-sm text-primary dark:text-primary-dark">{t('wardrobe.modal.takePhoto')}</span>
                             </button>
                         </div>
                     ) : (
@@ -309,7 +305,7 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
                                         <Loader2 size={32} className="animate-spin text-accent" />
                                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
                                             <Sparkles size={14} className="text-accent"/>
-                                            AI Analiz Ediyor...
+                                            {t('wardrobe.modal.analyzing')}
                                         </div>
                                     </div>
                                 )}
@@ -324,14 +320,14 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
 
                             <div className="space-y-4">
                                 <Input 
-                                    label="Parça Adı" 
+                                    label={t('wardrobe.modal.nameLabel')} 
                                     value={newItemName} 
                                     onChange={setNewItemName} 
-                                    placeholder={isAnalyzing ? "Analiz ediliyor..." : "Örn: Siyah İpek Gömlek"}
+                                    placeholder={isAnalyzing ? t('wardrobe.modal.namePlaceholderAnalyzing') : t('wardrobe.modal.namePlaceholder')}
                                 />
                                 
                                 <div>
-                                    <label className="block text-[10px] font-bold text-secondary dark:text-secondary-dark uppercase tracking-[0.2em] mb-3 ml-1">Kategori</label>
+                                    <label className="block text-[10px] font-bold text-secondary dark:text-secondary-dark uppercase tracking-[0.2em] mb-3 ml-1">{t('wardrobe.modal.categoryLabel')}</label>
                                     <div className="grid grid-cols-3 gap-2">
                                         {WARDROBE_CATEGORIES.map(c => (
                                             <button 
@@ -347,7 +343,7 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
 
                                 <div className="pt-4">
                                     <Button onClick={handleSave} disabled={isSaving || isAnalyzing} className="shadow-xl">
-                                        {isSaving ? <Loader2 className="animate-spin" /> : 'Gardıroba Ekle'}
+                                        {isSaving ? <Loader2 className="animate-spin" /> : t('wardrobe.modal.addButton')}
                                     </Button>
                                 </div>
                             </div>
@@ -429,7 +425,7 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
                                     className="w-full shadow-xl !py-4"
                                     icon={Sparkles}
                                 >
-                                    Bu Parçayla Kombinle
+                                    {t('wardrobe.detail.combine')}
                                 </Button>
                             </div>
                         </div>

@@ -2,6 +2,7 @@ import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import "firebase/compat/analytics";
+import "firebase/compat/storage";
 const firebaseConfig = {
     apiKey: "AIzaSyBwgyneKtR1NZIkEAPcf5mhP5Z5L3WfxUE",
     authDomain: "lova-style-coach.firebaseapp.com",
@@ -16,6 +17,7 @@ const firebaseConfig = {
 const app = firebase.initializeApp(firebaseConfig);
 export const auth = firebase.auth();
 export const db = firebase.firestore();
+export const storage = firebase.storage();
 let analytics;
 if (typeof window !== 'undefined') {
     try {
