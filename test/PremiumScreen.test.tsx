@@ -51,7 +51,7 @@ describe('PremiumScreen (web)', () => {
       </PremiumProvider>
     );
 
-    expect(await screen.findByText(/Premium/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Stilini Keşfet/i })).toBeInTheDocument();
     expect(Capacitor.isNativePlatform).toHaveBeenCalled();
   });
 });

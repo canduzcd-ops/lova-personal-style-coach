@@ -1,13 +1,12 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { UserProfile, SuggestionResult, WardrobeItem } from '../types';
-import { Sparkles, ArrowRight, Settings, LogOut, Moon, Sun, Bell, Crown, X, Palette, ChevronRight, Menu, Plus, Tag, Zap, Camera, Star, Loader2, Share2, Quote, Lock, Clock3 } from 'lucide-react';
+import { Sparkles, ArrowRight, Settings, LogOut, Moon, Sun, Bell, Crown, X, Palette, ChevronRight, Menu, Plus, Tag, Zap, Camera, Star, Loader2, Share2, Quote, Lock, Clock3, Check, Info, WifiOff, Wifi } from 'lucide-react';
 import { Button } from '../components/Shared';
 import { WardrobeScreen } from './WardrobeScreen';
 import { ProfileScreen } from './ProfileScreen';
 import { generateSmartOutfit, generateStaticStyleTips, rateOutfit } from '../services/styleService';
 import { ResultModal } from '../components/ResultModal';
-import { PremiumScreen } from './PremiumScreen';
 import { notificationService } from '../services/notificationService';
 import { wardrobeService } from '../services/wardrobeService';
 import { authService } from '../services/authService';
@@ -15,10 +14,26 @@ import { TrendDetailScreen } from './TrendDetailScreen';
 import { useTranslation } from 'react-i18next';
 import { setAppLanguage } from '../src/i18n';
 import { useImagePicker } from '../hooks/useImagePicker';
+import { useSwipeNav } from '../hooks/useSwipeNav';
 import { ImagePickerModal } from '../components/ImagePickerModal';
 import { usePremium } from '../contexts/PremiumContext';
-import { OutfitHistoryScreen } from './OutfitHistoryScreen';
+import { useModalStack } from '../src/contexts/ModalStackContext';
+import { useNetwork } from '../contexts/NetworkContext';
+import { Toast, ToastType } from '../components/Toast';
+import { track } from '../services/telemetry';
+import { maybeNotify } from '../services/engagementService';
+const PremiumScreenLazy = lazy(() => import('./PremiumScreen').then(m => ({ default: m.PremiumScreen })));
+const OutfitHistoryScreenLazy = lazy(() => import('./OutfitHistoryScreen').then(m => ({ default: m.OutfitHistoryScreen })));
 import { outfitHistoryService } from '../services/outfitHistoryService';
+import * as onboardingLocal from '../services/onboardingLocal';
+import type { OnboardingState, OnboardingStep } from '../services/onboardingLocal';
+import { checkGenerateLimit, markBonusUsed, getDaysUntilBonusReset } from '../services/softWall';
+import { optimizeImageDataUrl } from '../services/imageOptimizer';
+
+type PremiumOpenPayload = {
+    source: 'dashboard' | 'profile' | 'limit' | 'wardrobe';
+    reason?: string;
+};
 
 interface Props {
   user: UserProfile;
@@ -55,32 +70,27 @@ const WardrobeSketchIcon = ({ size = 22, className = "" }: { size?: number, clas
   </svg>
 );
 
-// Helper to compress image locally in Dashboard (avoids importing from other screens)
-const compressImage = (base64: string): Promise<string> => {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.src = base64;
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_SIZE = 800;
-            let width = img.width;
-            let height = img.height;
-            if (width > height) {
-                if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-            } else {
-                if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-            } else resolve(base64);
-        };
-        img.onerror = () => resolve(base64);
-    });
-};
+const CHECKLIST_STEPS: { id: OnboardingStep; title: string; desc: string; cta: string }[] = [
+    {
+        id: 'add-item',
+        title: 'İlk parçanı ekle',
+        desc: 'Dolabına bir parça ekle, stil asistanı seni tanısın.',
+        cta: 'Dolaba git',
+    },
+    {
+        id: 'analyze',
+        title: 'İlk AI analizini dene',
+        desc: 'Fotoğrafını ekle, parçayı otomatik tanıyalım.',
+        cta: 'Analiz başlat',
+    },
+    {
+        id: 'generate',
+        title: 'İlk kombinini üret',
+        desc: 'Asistanından stil önerini al ve kaydet.',
+        cta: 'Kombin üret',
+    },
+];
+
 
 // Quick Settings / Sidebar Modal
 const SettingsModal = ({ 
@@ -90,6 +100,9 @@ const SettingsModal = ({
     updateUser, 
     onLogout,
     onOpenHistory,
+    onOpenPremium,
+    onOpenGuide,
+    onNotify,
 }: { 
     isOpen: boolean, 
     onClose: () => void, 
@@ -97,6 +110,9 @@ const SettingsModal = ({
     updateUser: (u: UserProfile) => void,
     onLogout: () => void,
     onOpenHistory: () => void,
+    onOpenPremium: () => void,
+    onOpenGuide: () => void,
+    onNotify: (toast: { type: ToastType; title: string; desc?: string }) => void,
 }) => {
     if (!isOpen) return null;
 
@@ -121,10 +137,15 @@ const SettingsModal = ({
         const isEnabled = notificationService.isEnabled();
         if (isEnabled) {
             notificationService.disable();
-            alert(t('dashboard.notifications.disabled'));
+            onNotify({ type: 'info', title: t('dashboard.notifications.disabled', 'Bildirimler kapatıldı') });
         } else {
             const granted = await notificationService.requestPermission();
-            if (granted) notificationService.send(t('dashboard.notifications.enabledTitle'), t('dashboard.notifications.enabledBody'));
+            if (granted) {
+                notificationService.send(t('dashboard.notifications.enabledTitle'), t('dashboard.notifications.enabledBody'));
+                onNotify({ type: 'success', title: 'Bildirimler açıldı', desc: 'Test bildirimi birazdan gelir.' });
+            } else {
+                onNotify({ type: 'info', title: 'İzin verilmedi', desc: 'Bildirim izni vermeyi tercih etmedin.' });
+            }
         }
     };
 
@@ -155,9 +176,16 @@ const SettingsModal = ({
                         <span className="flex items-center gap-3 text-sm font-semibold text-primary dark:text-white"><Clock3 size={16}/> Kombin Geçmişi</span>
                         <ChevronRight size={16} className="text-secondary dark:text-secondary-dark" />
                     </button>
+                    <button onClick={() => { onClose(); onOpenGuide(); }} className="w-full flex items-center justify-between p-4 bg-surface dark:bg-surface-dark rounded-xl border border-transparent hover:border-border dark:border-border-dark active:scale-[0.98] transition-all">
+                        <span className="flex items-center gap-3 text-sm font-semibold text-primary dark:text-white"><Info size={16}/> Başlangıç Rehberi</span>
+                        <ChevronRight size={16} className="text-secondary dark:text-secondary-dark" />
+                    </button>
                     {!isPremium && (
-                        <button onClick={() => { onClose(); /* Trigger premium */ }} className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-accent/10 to-transparent rounded-xl border border-accent/20 active:scale-[0.98] transition-transform">
-                             <span className="flex items-center gap-3 text-sm font-bold text-accent"><Crown size={16}/> {t('dashboard.menu.premium')}</span>
+                        <button onClick={() => { onClose(); onOpenPremium(); }} className="w-full p-4 bg-gradient-to-r from-accent/10 to-transparent rounded-xl border border-accent/20 active:scale-[0.98] transition-transform text-left">
+                             <div className="flex items-center gap-3 text-sm font-bold text-accent mb-1"><Crown size={16}/> {t('dashboard.menu.premium')}</div>
+                             <div className="text-[11px] text-primary/80 dark:text-white/80 leading-snug">
+                                Sınırsız kombin • sınırsız dolap • AI analiz
+                             </div>
                         </button>
                     )}
                 </div>
@@ -175,6 +203,7 @@ const SettingsModal = ({
 export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
     const { t, i18n } = useTranslation();
     const premium = usePremium();
+  const { isOnline, isSyncing, lastSyncTime } = useNetwork();
   const [currentView, setCurrentView] = useState<'home' | 'wardrobe' | 'profile' | 'trend-detail'>('home');
   const [result, setResult] = useState<SuggestionResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -182,33 +211,123 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
   const [showPremium, setShowPremium] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
   const [dailyTip, setDailyTip] = useState(generateStaticStyleTips(user.styles));
+    const [toast, setToast] = useState<{ type: ToastType; title: string; desc?: string } | null>(null);
+    const [checklistVisible, setChecklistVisible] = useState(false);
+    const [checklistState, setChecklistState] = useState<OnboardingState>(() => onboardingLocal.getState());
+    const [premiumMeta, setPremiumMeta] = useState<PremiumOpenPayload | null>(null);
+  const { isAnyOpen: isModalOpen } = useModalStack();
+  
+  // Swipe navigation between main views (after state declarations)
+  const mainViews = ['home', 'wardrobe', 'profile'] as const;
+  const isSwipeEnabled = !showPremium && !showHistory && !showSettings && currentView !== 'trend-detail' && !isModalOpen;
+  
+  useSwipeNav({
+    enabled: isSwipeEnabled,
+    blocked: isModalOpen,
+    onSwipeLeft: () => {
+      const currentIndex = mainViews.indexOf(currentView as any);
+      if (currentIndex >= 0 && currentIndex < mainViews.length - 1) {
+        setCurrentView(mainViews[currentIndex + 1]);
+      }
+    },
+    onSwipeRight: () => {
+      const currentIndex = mainViews.indexOf(currentView as any);
+      if (currentIndex > 0) {
+        setCurrentView(mainViews[currentIndex - 1]);
+      }
+    },
+  });
 
   // Style Rating Logic
   const [isRating, setIsRating] = useState(false);
   const [ratingData, setRatingData] = useState(user.styleRating);
   const [showRatingResult, setShowRatingResult] = useState(false); // New state for result panel
+  const [showSoftWallOverlay, setShowSoftWallOverlay] = useState(false); // Soft wall overlay state
 
     const isPremium = premium.isPremium;
 
-  // Wardrobe Lock Logic: Locked if NOT Premium AND (Combinations >= 2)
-    const isWardrobeLocked = !isPremium && user.trialUsage.combinationsCount >= 2;
+  // Soft Wall Logic: Check if overlay should show
+    const generateLimit = checkGenerateLimit(isPremium, user.trialUsage.combinationsCount);
 
   const hasItems = user.usage.wardrobeCount > 0;
 
+    const openPremium = (payload: PremiumOpenPayload) => {
+        setPremiumMeta(payload);
+        setShowPremium(true);
+    };
+
+    const closePremium = () => {
+        setShowPremium(false);
+        setPremiumMeta(null);
+    };
+
+    const isStepDone = (id: OnboardingStep) => checklistState.completedSteps.includes(id);
+
+    const markStep = (id: OnboardingStep) => {
+        if (isStepDone(id)) return;
+        setChecklistState((prev) => {
+            const next = { ...prev, completedSteps: [...prev.completedSteps, id] };
+            onboardingLocal.markStepCompleted(id);
+            track('onboarding_step_done', { step: id });
+            return next;
+        });
+    };
+
+    const closeChecklist = () => {
+        setChecklistVisible(false);
+        setChecklistState((prev) => ({ ...prev, seen: true }));
+        onboardingLocal.markSeen();
+        track('onboarding_shown', {});
+    };
+
+    const openChecklist = () => {
+        setChecklistVisible(true);
+    };
+
+    const handleStepAction = (id: OnboardingStep) => {
+        if (id === 'add-item') {
+                setCurrentView('wardrobe');
+                markStep('add-item');
+        } else if (id === 'analyze') {
+                setCurrentView('wardrobe');
+                markStep('analyze');
+        } else if (id === 'generate') {
+                handleGenerateClick();
+        }
+    };
+
+    useEffect(() => {
+        const state = onboardingLocal.getState();
+        setChecklistState(state);
+        if (!state.seen) setChecklistVisible(true);
+    }, []);
+
+    useEffect(() => {
+        if (user.usage.wardrobeCount > 0 && !isStepDone('add-item')) {
+                markStep('add-item');
+        }
+    }, [user.usage.wardrobeCount]);
+
+    const completedCount = CHECKLIST_STEPS.filter((s) => isStepDone(s.id)).length;
+    const progress = Math.round((completedCount / CHECKLIST_STEPS.length) * 100);
+
   const handleGenerateClick = async () => {
       // 1. Check Premium / Trial Limits
-    if (!isPremium) {
-          if (user.trialUsage.combinationsCount >= 2) {
-              setShowPremium(true);
-              return;
-          }
-      }
-
-      setLoading(true);
+    const limitCheck = checkGenerateLimit(isPremium, user.trialUsage.combinationsCount);
+    
+    if (!limitCheck.canGenerate) {
+        openPremium({ source: 'limit', reason: 'Ücretsiz deneme hakkın bitti. Premium ile sınırsız devam et.' });
+        return;
+    }
+    
+    // Show soft wall overlay if limit approaching
+    if (limitCheck.showOverlay && !isPremium) {
+        setShowSoftWallOverlay(true);
+    }
       try {
           const items = await wardrobeService.getWardrobeItemsForCurrentUser();
           if (items.length < 2) {
-              alert(t('dashboard.alerts.needTwoItems'));
+              setToast({ type: 'info', title: t('dashboard.alerts.needTwoItems') });
               setLoading(false);
               setCurrentView('wardrobe');
               return;
@@ -216,17 +335,25 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
           const res = await generateSmartOutfit(user, items);
           if (res) {
               setResult(res);
+              markStep('generate');
               outfitHistoryService.addOutfit(user.id, { outfit: res, source: 'ai' }).catch((err) => console.warn('History save failed', err));
+              // Send engagement notification
+              maybeNotify('outfit_generated_success').catch(err => console.warn('Engagement notif failed', err));
               // Increment Usage if not premium
               if (!isPremium) {
                   const updatedUser = await authService.incrementTrialCombo(user);
                   updateUser(updatedUser);
+                  // Mark bonus used if this is the 3rd combo
+                  if (updatedUser.trialUsage.combinationsCount === 3) {
+                      markBonusUsed();
+                  }
               }
           }
-          else alert(t('dashboard.alerts.notFound'));
+          else setToast({ type: 'info', title: t('dashboard.alerts.notFound') });
       } catch (e) {
           console.error(e);
-          alert(t('dashboard.alerts.generic'));
+          const message = e instanceof Error && e.message ? e.message : t('dashboard.alerts.generic');
+          setToast({ type: 'error', title: 'Üretilemedi', desc: message });
       } finally {
           setLoading(false);
       }
@@ -236,7 +363,7 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
        // 1. Check Limits First
     if (!isPremium) {
           if (user.trialUsage.combinationsCount >= 2) {
-              setShowPremium(true);
+              openPremium({ source: 'limit', reason: 'Ücretsiz kombin hakkın tükendi.' });
               return;
           }
       }
@@ -273,6 +400,7 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                       desc: t('dashboard.alerts.anchorDesc', { item: anchorItem.name, desc: res.outfit.desc })
                   }
               });
+              markStep('generate');
               
               outfitHistoryService.addOutfit(user.id, { outfit: res, source: 'ai' }).catch((err) => console.warn('History save failed', err));
                if (!isPremium) {
@@ -280,11 +408,12 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                   updateUser(updatedUser);
               }
           } else {
-              alert(t('dashboard.alerts.generateFailed'));
+              setToast({ type: 'info', title: t('dashboard.alerts.generateFailed') });
           }
       } catch(e) {
           console.error(e);
-          alert(t('dashboard.alerts.generic'));
+          const message = e instanceof Error && e.message ? e.message : t('dashboard.alerts.generic');
+          setToast({ type: 'error', title: 'Üretilemedi', desc: message });
       } finally {
           setLoading(false);
       }
@@ -292,34 +421,40 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
 
   // Image picker for rating uploads
   const handleRatingImageSelected = async (base64: string) => {
-      setIsRating(true);
-      try {
-          const analysis = await rateOutfit(base64);
-          if (analysis) {
-              const newRating = { 
-                  ...analysis, 
-                  image: base64, 
-                  date: new Date().toISOString() 
-              };
-              setRatingData(newRating);
-              
-              // Save to user profile
-              const updatedUser = { ...user, styleRating: newRating };
-              updateUser(updatedUser);
-              await authService.updateProfile(updatedUser);
-              
-              // Open the result panel
-              setShowRatingResult(true);
-          } else {
-              alert(t('dashboard.rating.analysisFailed'));
-          }
-      } catch (err) {
-          console.error(err);
-          alert(t('dashboard.alerts.generic'));
-      } finally {
-          setIsRating(false);
-      }
-  };
+  setIsRating(true);
+  try {
+    const optimized = await optimizeImageDataUrl(base64, {
+      maxDimension: 800,
+      quality: 0.8,
+    });
+
+    const analysis = await rateOutfit(optimized);
+
+    if (analysis) {
+      const newRating = {
+        ...analysis,
+        image: optimized,
+        date: new Date().toISOString(),
+      };
+
+      setRatingData(newRating);
+
+      const updatedUser = { ...user, styleRating: newRating };
+      updateUser(updatedUser);
+      await authService.updateProfile(updatedUser);
+
+      setShowRatingResult(true);
+    } else {
+      setToast({ type: 'info', title: t('dashboard.rating.analysisFailed') });
+    }
+  } catch (err) {
+    console.error(err);
+    const message = err instanceof Error && err.message ? err.message : t('dashboard.alerts.generic');
+    setToast({ type: 'error', title: 'Analiz yapılamadı', desc: message });
+  } finally {
+    setIsRating(false);
+  }
+};
 
   const ratingImagePicker = useImagePicker({
     onImageSelected: handleRatingImageSelected,
@@ -360,9 +495,31 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                 </button>
 
                 {/* Center: Logo */}
-                <h1 className="text-2xl font-serif font-bold tracking-tight text-primary dark:text-primary-dark cursor-pointer" onClick={() => setCurrentView('home')}>
-                    LOVA
-                </h1>
+                <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-serif font-bold tracking-tight text-primary dark:text-primary-dark cursor-pointer" onClick={() => setCurrentView('home')}>
+                        LOVA
+                    </h1>
+                    
+                    {/* Offline Badge */}
+                    {!isOnline && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/20 rounded-full border border-red-200 dark:border-red-800">
+                            <WifiOff size={10} className="text-red-600 dark:text-red-400" />
+                            <span className="text-[9px] font-semibold text-red-700 dark:text-red-400">
+                                Offline
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Syncing Badge */}
+                    {isOnline && isSyncing && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/20 rounded-full border border-blue-200 dark:border-blue-800">
+                            <Loader2 size={10} className="text-blue-600 dark:text-blue-400 animate-spin" />
+                            <span className="text-[9px] font-semibold text-blue-700 dark:text-blue-400">
+                                Syncing
+                            </span>
+                        </div>
+                    )}
+                </div>
 
                 {/* Right: Profile & Wardrobe Toggle */}
                 <div className="flex items-center gap-3">
@@ -390,10 +547,10 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                         ) : (
                             <>
                                 <WardrobeSketchIcon size={22} className="text-primary dark:text-primary-dark" />
-                                {user.usage.wardrobeCount > 0 && !isWardrobeLocked && (
+                                {user.usage.wardrobeCount > 0 && !(!isPremium && user.trialUsage.combinationsCount >= 3) && (
                                     <span className="absolute top-2 right-2 w-2 h-2 bg-accent rounded-full border border-page dark:border-black"></span>
                                 )}
-                                {isWardrobeLocked && (
+                                {!isPremium && user.trialUsage.combinationsCount >= 3 && (
                                      <div className="absolute top-0 right-0 w-3 h-3 bg-accent rounded-full border border-page flex items-center justify-center">
                                          <Lock size={8} className="text-white" />
                                      </div>
@@ -406,14 +563,61 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
         )}
 
         {/* MAIN CONTENT */}
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 relative" style={{ overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
             {currentView === 'home' ? (
-                <div className="h-full flex flex-col overflow-y-auto no-scrollbar pb-20 animate-fade-in">
+                <div className="h-full flex flex-col pb-20 animate-fade-in" style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+
+                    {checklistVisible && (
+                        <div className="px-6 pt-4">
+                            <div className="bg-surface dark:bg-surface-dark border border-border dark:border-border-dark rounded-3xl p-5 shadow-md">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-[10px] uppercase tracking-[0.3em] text-secondary dark:text-secondary-dark font-bold">Başlangıç rehberi</p>
+                                        <h3 className="text-xl font-serif font-bold text-primary dark:text-primary-dark">3 adımda hazır ol</h3>
+                                        <p className="text-xs text-secondary dark:text-secondary-dark mt-1">{completedCount} / {CHECKLIST_STEPS.length} tamamlandı</p>
+                                    </div>
+                                    <button onClick={closeChecklist} className="p-2 rounded-full hover:bg-border dark:hover:bg-border-dark text-secondary" aria-label="Kapat">
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                <div className="mt-4 w-full h-2 bg-page dark:bg-page-dark rounded-full overflow-hidden">
+                                    <div className="h-full bg-accent" style={{ width: `${progress}%` }}></div>
+                                </div>
+
+                                <div className="mt-4 space-y-3">
+                                    {CHECKLIST_STEPS.map((step) => {
+                                        const done = isStepDone(step.id);
+                                        return (
+                                            <div key={step.id} className="flex items-center gap-3 p-3 rounded-2xl bg-page/60 dark:bg-page-dark/60 border border-border/60 dark:border-border-dark/60">
+                                                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${done ? 'bg-emerald-100 text-emerald-600' : 'bg-surface dark:bg-surface-dark text-secondary'}`}>
+                                                    {done ? <Check size={18} /> : <Sparkles size={16} />}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="text-sm font-semibold text-primary dark:text-primary-dark">{step.title}</div>
+                                                    <div className="text-xs text-secondary dark:text-secondary-dark leading-snug">{step.desc}</div>
+                                                </div>
+                                                <Button
+                                                    fullWidth={false}
+                                                    className="!py-2 !px-4 !text-[10px]"
+                                                    variant={done ? 'secondary' : 'primary'}
+                                                    onClick={() => handleStepAction(step.id)}
+                                                    disabled={done}
+                                                >
+                                                    {done ? 'Tamam' : step.cta}
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
                     {/* 1. HERO SECTION */}
                     <div className="relative aspect-[3/4] w-full bg-border">
                         <img 
-                            src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?q=80&w=1473&auto=format&fit=crop"
+                            src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?q=80&w=1473&fm=jpg&fit=crop"
                             className="w-full h-full object-cover mix-blend-overlay opacity-80"
                             alt="Daily Style"
                         />
@@ -506,7 +710,7 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                                              {t('dashboard.rating.lockMessage')}
                                          </p>
                                          <button 
-                                            onClick={() => setShowPremium(true)}
+                                              onClick={() => openPremium({ source: 'dashboard', reason: 'Stil puanı Premium özelliği.' })}
                                             className="px-3 py-1.5 bg-accent text-page text-[9px] font-bold rounded-full"
                                          >
                                             {t('dashboard.rating.upgrade')}
@@ -571,7 +775,7 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                                 {/* Background Image */}
                                 <div className="absolute inset-0">
                                     <img 
-                                        src="https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1470&auto=format&fit=crop" 
+                                        src="https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1470&fm=jpg&fit=crop" 
                                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                                     />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent"></div>
@@ -639,10 +843,10 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                                      <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-white/40 rounded-full blur-2xl"></div>
                                  </div>
 
-                                 <div 
-                                    onClick={() => setShowPremium(true)}
-                                    className="bg-primary p-5 rounded-[24px] relative overflow-hidden h-44 flex flex-col justify-between group cursor-pointer shadow-soft"
-                                 >
+                                            <div 
+                                                onClick={() => openPremium({ source: 'dashboard', reason: 'Premium keşif kartı' })}
+                                                className="bg-primary p-5 rounded-[24px] relative overflow-hidden h-44 flex flex-col justify-between group cursor-pointer shadow-soft"
+                                            >
                                      <div className="z-10">
                                          <div className="flex items-center gap-1 mb-2">
                                              <Zap size={12} className="text-accent fill-current" />
@@ -662,24 +866,24 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                 </div>
             ) : currentView === 'wardrobe' ? (
                 <div className="h-full animate-slide-up bg-page dark:bg-page-dark relative">
-                    {isWardrobeLocked ? (
+                    {!isPremium && user.trialUsage.combinationsCount >= 3 ? (
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center bg-page dark:bg-page-dark">
                             <div className="w-24 h-24 bg-surface dark:bg-surface-dark rounded-full flex items-center justify-center mb-6 shadow-soft relative overflow-hidden">
                                 <div className="absolute inset-0 bg-accent/5"></div>
                                 <Lock size={32} className="text-secondary dark:text-secondary-dark relative z-10" />
                             </div>
-                            <h2 className="text-3xl font-serif text-primary dark:text-primary-dark mb-4">{t('dashboard.wardrobe.lockedTitle')}</h2>
+                            <h2 className="text-3xl font-serif text-primary dark:text-primary-dark mb-4">Deneme süresi bitti</h2>
                             <div className="w-12 h-1 bg-accent rounded-full mb-6 mx-auto"></div>
                             <p className="text-sm text-secondary dark:text-secondary-dark mb-8 leading-relaxed max-w-xs font-light">
-                                {t('dashboard.wardrobe.lockedBody', { count: 2 })}
+                                Ücretsiz 3 kombin hakkını kullandın. Premium ile sınırsız kombin ve dolap erişimini aç.
                             </p>
-                            <Button onClick={() => setShowPremium(true)} variant="gold" icon={Crown} className="shadow-xl !py-4 !px-8">
-                                {t('dashboard.wardrobe.upgrade')}
+                            <Button onClick={() => openPremium({ source: 'limit', reason: 'Deneme süresi bitti.' })} variant="gold" icon={Crown} className="shadow-xl !py-4 !px-8">
+                                Premium'a geç
                             </Button>
                             
                             {/* Background visual element */}
                             <div className="absolute inset-0 -z-10 opacity-5 pointer-events-none">
-                                <img src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80" className="w-full h-full object-cover grayscale" />
+                                <img src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&fm=jpg" className="w-full h-full object-cover grayscale" />
                             </div>
                         </div>
                     ) : (
@@ -687,7 +891,7 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                             user={user} 
                             updateUser={updateUser}
                             onStatsUpdate={() => {}}
-                            onTriggerPremium={() => setShowPremium(true)}
+                            onTriggerPremium={(payload) => openPremium(payload)}
                             onGenerateWithItem={handleGenerateWithAnchor}
                         />
                     )}
@@ -701,7 +905,7 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                     onBack={() => setCurrentView('home')}
                     onLogout={onLogout}
                     updateUser={updateUser}
-                    onOpenPremium={() => setShowPremium(true)}
+                    onOpenPremium={() => openPremium({ source: 'profile', reason: 'Profil ayarlarından Premium' })}
                 />
             )}
         </div>
@@ -715,6 +919,9 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                 updateUser={updateUser} 
                 onLogout={onLogout} 
                 onOpenHistory={() => setShowHistory(true)}
+                onOpenPremium={() => openPremium({ source: 'dashboard', reason: 'Ayarlar menüsü' })}
+                onOpenGuide={openChecklist}
+                onNotify={(payload) => setToast(payload)}
             />
         )}
 
@@ -726,9 +933,43 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
             />
         )}
 
-        {showHistory && <OutfitHistoryScreen user={user} onClose={() => setShowHistory(false)} />}
+                {showHistory && (
+                    <Suspense fallback={null}>
+                        <OutfitHistoryScreenLazy 
+                            user={user} 
+                            onClose={() => setShowHistory(false)}
+                            onGenerateOutfit={() => {
+                              setShowHistory(false);
+                              // Already on home, show generate form if needed
+                            }}
+                            onOpenWardrobe={() => {
+                              setShowHistory(false);
+                              setCurrentView('wardrobe');
+                            }}
+                        />
+                    </Suspense>
+                )}
         
-        {showPremium && <PremiumScreen user={user} onClose={() => setShowPremium(false)} onSuccess={updateUser} />}
+                {showPremium && (
+                    <Suspense fallback={null}>
+                        <PremiumScreenLazy 
+                            user={user} 
+                            onClose={closePremium} 
+                            onSuccess={updateUser}
+                            reason={premiumMeta?.reason}
+                            source={premiumMeta?.source}
+                        />
+                    </Suspense>
+                )}
+
+        {toast && (
+            <Toast
+                type={toast.type}
+                title={toast.title}
+                desc={toast.desc}
+                onClose={() => setToast(null)}
+            />
+        )}
 
         {/* Style Rating Result Panel (Premium Feature) */}
         {showRatingResult && ratingData && (
@@ -779,6 +1020,64 @@ export const Dashboard: React.FC<Props> = ({ user, onLogout, updateUser }) => {
                         >
                             {t('dashboard.rating.close')}
                         </Button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Soft Wall Overlay - Weekly Bonus Prompt */}
+        {showSoftWallOverlay && !isPremium && (
+            <div className="fixed inset-0 z-[75] bg-black/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in p-4">
+                <div className="bg-gradient-to-br from-surface via-page to-surface-dark dark:from-surface-dark dark:via-page-dark dark:to-surface rounded-3xl p-8 shadow-2xl max-w-sm border border-accent/30 animate-scale-in relative overflow-hidden">
+                    {/* Background glow */}
+                    <div className="absolute inset-0 bg-accent/5 blur-3xl pointer-events-none" />
+                    
+                    {/* Content */}
+                    <div className="relative z-10 text-center">
+                        <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Zap size={28} className="text-accent" />
+                        </div>
+                        
+                        <h3 className="text-2xl font-serif font-bold text-primary dark:text-primary-dark mb-2">
+                            Haftalık Bonus
+                        </h3>
+                        <p className="text-sm text-secondary dark:text-secondary-dark mb-6 leading-relaxed">
+                            {user.trialUsage.combinationsCount === 2 
+                                ? `Ücretsiz 2 kombin kullandın. İçin size 1 bonus daha veriyoruz!`
+                                : `1 hafta içinde yeni bonus hakkın yenileniyor.`}
+                        </p>
+
+                        <div className="bg-surface/60 dark:bg-surface-dark/60 rounded-2xl p-4 mb-6 border border-accent/20">
+                            <p className="text-xs text-secondary dark:text-secondary-dark uppercase tracking-wider font-bold mb-2">
+                                Şu anda
+                            </p>
+                            <p className="text-lg font-bold text-primary dark:text-primary-dark">
+                                {user.trialUsage.combinationsCount} / 3 kombin
+                            </p>
+                            {user.trialUsage.combinationsCount === 2 && (
+                                <p className="text-[10px] text-accent mt-2">
+                                    ✨ 1 bonus kombin hakkın var!
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="space-y-2 flex flex-col">
+                            <Button 
+                                onClick={() => setShowSoftWallOverlay(false)} 
+                                className="!rounded-xl shadow-lg !py-3"
+                            >
+                                {user.trialUsage.combinationsCount === 2 ? 'Bonusu Kullan' : 'Tamam'}
+                            </Button>
+                            <button
+                                onClick={() => {
+                                    setShowSoftWallOverlay(false);
+                                    openPremium({ source: 'limit', reason: 'Sınırsız kombin üretmek için Premium\'a geç.' });
+                                }}
+                                className="px-4 py-2 rounded-xl text-sm font-semibold text-accent hover:bg-accent/10 transition-colors"
+                            >
+                                Premium'a Geç →
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

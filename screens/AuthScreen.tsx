@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2, Chrome, Apple } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button, Input } from '../components/Shared';
 import { authService } from '../services/authService';
@@ -7,6 +7,9 @@ import { UserProfile } from '../types';
 import { OnboardingFlow } from './OnboardingFlow';
 import { LegalModal } from './LegalScreens';
 import { setAppLanguage } from '../src/i18n';
+import { StateCard } from '../components/StateCard';
+import { Toast, ToastType } from '../components/Toast';
+import { Capacitor } from '@capacitor/core';
 
 interface Props {
   onLogin: (user: UserProfile) => void;
@@ -16,6 +19,7 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
   const [view, setView] = useState<'login' | 'register' | 'forgot'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: ToastType; title: string; desc?: string } | null>(null);
 
   const { t, i18n } = useTranslation();
 
@@ -32,10 +36,14 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
   const [onboardingMode, setOnboardingMode] = useState(false);
 
   useEffect(() => {
-    const savedEmail = localStorage.getItem('lova_remember_me_email');
-    if (savedEmail) {
-      setEmail(savedEmail);
-      setRememberMe(true);
+    try {
+      const savedEmail = localStorage.getItem('lova_remember_me_email');
+      if (savedEmail) {
+        setEmail(savedEmail);
+        setRememberMe(true);
+      }
+    } catch (e) {
+      console.warn('[AuthScreen] localStorage read failed:', e);
     }
   }, []);
 
@@ -73,7 +81,7 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
       const user = await authService.register(email, password, data.name, data.styles);
       if (user) onLogin(user);
       else {
-        alert(t('auth.alerts.registerSuccessVerify', 'Kayıt başarılı! Lütfen e-postanı doğrula.'));
+        setToast({ type: 'success', title: t('auth.alerts.registerSuccessVerify', 'Kayıt başarılı! Lütfen e-postanı doğrula.') });
         setView('login');
       }
     } catch (err: any) {
@@ -93,10 +101,41 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
     setError(null);
     try {
       await authService.resetPassword(cleanedEmail);
-      alert(t('auth.alerts.resetSuccess'));
+      setToast({ type: 'success', title: t('auth.alerts.resetSuccess') });
       setView('login');
     } catch (err: any) {
       setError(err.message || t('auth.alerts.resetFailed', 'Şifre sıfırlama e-postası gönderilemedi.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const user = await authService.loginWithGoogle();
+      onLogin(user);
+    } catch (err: any) {
+      // Redirect durumunda hata gösterme
+      if (err.message === 'REDIRECT_IN_PROGRESS') {
+        console.log('[Auth] Google redirect başlatıldı');
+        return;
+      }
+      setError(err.message || 'Google giriş başarısız.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const user = await authService.loginWithApple();
+      onLogin(user);
+    } catch (err: any) {
+      setError(err.message || 'Apple giriş başarısız.');
     } finally {
       setLoading(false);
     }
@@ -115,8 +154,17 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
   }
 
   return (
-    <div className="relative h-full w-full bg-page dark:bg-page-dark transition-colors duration-500 overflow-hidden font-sans">
-      {/* TR/EN SWITCHER (Dashboard parity) */}
+    <div
+      className="relative w-full bg-page dark:bg-page-dark transition-colors duration-500 font-sans"
+      style={{ 
+        minHeight: '100dvh', 
+        display: 'flex', 
+        flexDirection: 'column',
+        touchAction: 'pan-y',
+        overflowX: 'hidden',
+      }}
+    >
+      {/* TR/EN SWITCHER */}
       <div className="absolute top-4 right-4 z-[999999] pointer-events-auto" style={{ WebkitTapHighlightColor: 'transparent' }}>
         <div className="flex gap-1 bg-black/20 backdrop-blur-xl border border-white/20 rounded-full p-1">
           <button
@@ -144,16 +192,20 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
       {/* FULL SCREEN BACKGROUND IMAGE */}
       <div className="absolute inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=2576&auto=format&fit=crop"
+          src="https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=2576&fm=jpg&fit=crop"
           className="w-full h-full object-cover object-center"
           alt="Editorial Texture"
+          onError={(e) => {
+            // Fallback gradient if image fails to load
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/10" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/10 to-black/60" />
       </div>
 
       {/* LOGO AREA */}
-      <div className="absolute top-0 left-0 right-0 z-10 pt-16 text-center pointer-events-none">
-        <h1 className="text-6xl font-serif text-white tracking-tighter drop-shadow-md animate-fade-in">LOVA</h1>
+      <div className="relative z-10 pt-20 text-center">
+        <h1 className="text-6xl font-serif text-white tracking-tighter drop-shadow-lg animate-fade-in">LOVA</h1>
         <p
           className="text-[10px] font-bold text-white/90 uppercase tracking-[0.4em] mt-2 drop-shadow-sm animate-slide-up"
           style={{ animationDelay: '0.1s' }}
@@ -163,15 +215,23 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
       </div>
 
       {/* CONTENT BOTTOM SHEET */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col justify-end h-full pointer-events-none">
-        <div className="pointer-events-auto bg-page/60 dark:bg-page-dark/70 backdrop-blur-2xl rounded-t-[40px] px-8 pt-8 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] animate-slide-up max-h-[75vh] overflow-y-auto no-scrollbar border-t border-white/20">
+      <div className="relative z-20 mt-auto">
+        <div 
+          className="bg-page/95 dark:bg-page-dark/95 backdrop-blur-2xl rounded-t-[40px] px-8 pt-8 pb-8 shadow-[0_-10px_40px_rgba(0,0,0,0.2)] animate-slide-up border-t border-white/10"
+          style={{
+            maxHeight: '72vh',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
+          }}
+        >
           <div className="mb-6 text-center">
             <h2 className="text-3xl font-serif text-primary dark:text-primary-dark">
-         {view === 'login'
-  ? t('auth.title.login')
-  : view === 'register'
-  ? t('auth.title.register')
-  : t('auth.title.forgot')}
+              {view === 'login'
+                ? t('auth.title.login')
+                : view === 'register'
+                ? t('auth.title.register')
+                : t('auth.title.forgot')}
             </h2>
             <div className="w-12 h-1 bg-accent rounded-full mx-auto mt-3 mb-2" />
             <p className="text-sm text-secondary dark:text-secondary-dark font-light">
@@ -184,8 +244,8 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
           </div>
 
           {error && (
-            <div className="mb-6 flex items-center gap-3 text-red-600 dark:text-red-400 text-xs bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-900/20 animate-scale-in">
-              <AlertCircle size={16} /> {error}
+            <div className="mb-6 animate-scale-in">
+              <StateCard type="error" title={t('auth.alerts.errorTitle', 'Bir sorun oluştu')} desc={error} />
             </div>
           )}
 
@@ -199,7 +259,7 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
               onChange={setEmail}
               placeholder={t('auth.emailPlaceholder', 'isim@ornek.com')}
               type="email"
-              className="!bg-transparent border border-white/30 focus:border-accent text-primary dark:text-white placeholder:text-secondary/60"
+              className="!bg-surface/50 dark:!bg-surface-dark/50 border border-border dark:border-border-dark focus:border-accent text-primary dark:text-primary-dark placeholder:text-secondary/60"
             />
 
             {view !== 'forgot' && (
@@ -209,7 +269,7 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
                 onChange={setPassword}
                 placeholder="••••••••"
                 type="password"
-                className="!bg-transparent border border-white/30 focus:border-accent text-primary dark:text-white placeholder:text-secondary/60"
+                className="!bg-surface/50 dark:!bg-surface-dark/50 border border-border dark:border-border-dark focus:border-accent text-primary dark:text-primary-dark placeholder:text-secondary/60"
               />
             )}
 
@@ -251,7 +311,44 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
             </Button>
           </form>
 
-          <div className="mt-2 text-center pt-4 border-t border-primary/5 dark:border-white/5">
+          {/* Social Login Options (Login & Register views only) */}
+          {(view === 'login' || view === 'register') && (
+            <>
+              <div className="flex items-center gap-3 my-6">
+                <div className="flex-1 h-px bg-border dark:bg-border-dark" />
+                <span className="text-[10px] font-bold uppercase text-secondary/60 px-2">ya da</span>
+                <div className="flex-1 h-px bg-border dark:bg-border-dark" />
+              </div>
+
+              <div className="space-y-2">
+                {/* Google Sign-In - Available on web */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-border dark:border-border-dark bg-surface/50 dark:bg-surface-dark/50 hover:bg-surface dark:hover:bg-surface-dark transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Chrome size={16} className="text-primary dark:text-primary-dark" />
+                  <span className="text-sm font-semibold text-primary dark:text-primary-dark">Google ile Giriş Yap</span>
+                </button>
+
+                {/* Apple Sign-In - iOS native only */}
+                {Capacitor.getPlatform() === 'ios' && (
+                  <button
+                    type="button"
+                    onClick={handleAppleLogin}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-border dark:border-border-dark bg-surface/50 dark:bg-surface-dark/50 hover:bg-surface dark:hover:bg-surface-dark transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Apple size={16} className="text-primary dark:text-primary-dark" />
+                    <span className="text-sm font-semibold text-primary dark:text-primary-dark">Apple ile Giriş Yap</span>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          <div className="mt-4 text-center pt-4 border-t border-border/30 dark:border-border-dark/30">
             {view === 'login' && (
               <p className="text-secondary dark:text-secondary-dark text-xs">
                 {t('auth.footer.noAccount')}{' '}
@@ -309,6 +406,14 @@ export const AuthScreen: React.FC<Props> = ({ onLogin }) => {
 
       {showPrivacy && <LegalModal type="privacy" onClose={() => setShowPrivacy(false)} />}
       {showTerms && <LegalModal type="terms" onClose={() => setShowTerms(false)} />}
+      {toast && (
+        <Toast
+          type={toast.type}
+          title={toast.title}
+          desc={toast.desc}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 };

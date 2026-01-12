@@ -39,7 +39,7 @@ export const TrendDetailScreen: React.FC<Props> = ({ onBack }) => {
           {/* Hero Section */}
           <div className="relative h-96 w-full">
               <img 
-                  src="https://images.unsplash.com/photo-1549439602-43ebca2327af?q=80&w=1287&auto=format&fit=crop" 
+                  src="https://images.unsplash.com/photo-1549439602-43ebca2327af?q=80&w=1287&fm=jpg&fit=crop" 
                   className="w-full h-full object-cover"
                   alt="Quiet Luxury"
               />

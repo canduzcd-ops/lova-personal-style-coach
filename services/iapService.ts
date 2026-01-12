@@ -157,7 +157,10 @@ export class IapService {
 
     this._initPromise = (async () => {
       const platform = getPlatform();
+      console.log('[IAP] init başladı. Platform:', platform);
+      
       if (platform === 'web') {
+        console.log('[IAP] Web platform. init skip.');
         this._inited = true;
         return;
       }
@@ -165,17 +168,22 @@ export class IapService {
       const store = getStore();
       if (!store) {
         // Cordova plugin native ortamda biraz geç gelebiliyor
+        console.log('[IAP] Store henüz yüklenmedi. 300ms bekleniyor...');
         await new Promise((r) => setTimeout(r, 300));
       }
 
       const s = getStore();
       if (!s) {
+        console.error('[IAP] Store bulunamadı. cordova-plugin-purchase yüklenmemiş olabilir.');
         throw new Error('IAP store not available. cordova-plugin-purchase yüklenmemiş olabilir.');
       }
+
+      console.log('[IAP] Store mevcut. Store API:', Object.keys(s).slice(0, 10).join(', ') + '...');
 
       // log seviyesi (debug istersen aç)
       try {
         s.verbosity = s.DEBUG ?? 2;
+        console.log('[IAP] Store verbosity set:', s.verbosity);
       } catch {}
 
       // Register products
@@ -183,6 +191,7 @@ export class IapService {
       const PRODUCT_TYPE = s.PAID_SUBSCRIPTION || 'paid subscription';
 
       if (platform === 'android') {
+        console.log('[IAP] Android: Registering subscription', IAP_CONFIG.android.subscriptionId);
         s.register?.([
           {
             id: IAP_CONFIG.android.subscriptionId,
@@ -190,10 +199,12 @@ export class IapService {
             platform: s.GOOGLE_PLAY || 'android-playstore',
           },
         ]);
+        console.log('[IAP] Android: register() çağrıldı.');
       }
 
       if (platform === 'ios') {
         // iOS tarafında genelde iki ayrı product id olur
+        console.log('[IAP] iOS: Registering products', IAP_CONFIG.ios.monthlyProductId, IAP_CONFIG.ios.yearlyProductId);
         s.register?.([
           {
             id: IAP_CONFIG.ios.monthlyProductId,
@@ -206,39 +217,75 @@ export class IapService {
             platform: s.APPLE_APPSTORE || 'ios-appstore',
           },
         ]);
+        console.log('[IAP] iOS: register() çağrıldı.');
       }
 
       // Events
       // On approved: finish (client-only MVP, server verification yok)
       s.when?.('product')?.updated?.(() => {
-        // noop
+        console.log('[IAP] product updated event');
       });
 
       s.when?.('receipt')?.updated?.(() => {
-        // noop
+        console.log('[IAP] receipt updated event');
       });
 
       s.when?.('transaction')?.approved?.((tx: any) => {
         // IMPORTANT: Client-only MVP -> direkt finish
+        console.log('[IAP] transaction approved, finishing...');
         try {
           tx?.finish?.();
         } catch {}
       });
 
       // iOS restore için
-      // store.ready callback
-      await new Promise<void>((resolve) => {
-        s.ready?.(() => resolve());
-        // bazı sürümlerde ready yok, fallback:
-        setTimeout(() => resolve(), 700);
-      });
-
-      // İlk refresh
+      // store.initialize() - YENİ API (cordova-plugin-purchase v13+)
+      console.log('[IAP] store.initialize() çağrılıyor...');
       try {
-        await s.refresh?.();
-      } catch {}
+        if (typeof s.initialize === 'function') {
+          await s.initialize();
+          console.log('[IAP] store.initialize() başarılı.');
+        } else if (typeof s.update === 'function') {
+          // Fallback: bazı sürümlerde update() kullanılıyor
+          await s.update();
+          console.log('[IAP] store.update() başarılı (fallback).');
+        } else {
+          // Eski API: ready callback
+          console.log('[IAP] store.ready() çağrılıyor (eski API). 700ms timeout var...');
+          await new Promise<void>((resolve) => {
+            s.ready?.(() => {
+              console.log('[IAP] store.ready() callback tetiklendi.');
+              resolve();
+            });
+            // bazı sürümlerde ready yok, fallback:
+            setTimeout(() => {
+              console.log('[IAP] store.ready() timeout 700ms. Devam ediliyor.');
+              resolve();
+            }, 700);
+          });
+        }
+      } catch (initErr) {
+        console.warn('[IAP] store.initialize() hatası:', initErr);
+        // Devam et, uygulama açılabilsin
+      }
+
+      // İlk refresh/update
+      console.log('[IAP] Başlangıç refresh/update başlıyor...');
+      try {
+        if (typeof s.update === 'function') {
+          await s.update();
+          console.log('[IAP] store.update() başarılı.');
+        } else if (typeof s.refresh === 'function') {
+          await s.refresh();
+          console.log('[IAP] store.refresh() başarılı.');
+        }
+      } catch (err) {
+        console.warn('[IAP] Başlangıç refresh/update hatası:', err);
+        // Hata olsa bile devam et
+      }
 
       this._inited = true;
+      console.log('[IAP] init tamamlandı. _inited = true');
     })();
 
     return this._initPromise;
@@ -247,8 +294,10 @@ export class IapService {
   async getPlans(): Promise<IapPlanInfo[]> {
     await this.init();
     const platform = getPlatform();
+    console.log('[IAP] getPlans başladı. Platform:', platform);
 
     if (platform === 'web') {
+      console.log('[IAP] getPlans: Web platform. Dummy plans dönülüyor.');
       return [
         { id: 'monthly', title: 'Aylık', price: { price: '' } },
         { id: 'yearly', title: 'Yıllık', price: { price: '' } },
@@ -256,14 +305,32 @@ export class IapService {
     }
 
     const store = getStore();
-    if (!store) throw new Error('Store not available');
+    if (!store) {
+      console.error('[IAP] getPlans: Store not available');
+      throw new Error('Store not available');
+    }
 
     if (platform === 'android') {
+      console.log('[IAP] getPlans: Android. subscriptionId =', IAP_CONFIG.android.subscriptionId);
       const product = store.get?.(IAP_CONFIG.android.subscriptionId);
+      console.log('[IAP] getPlans: Android product:', {
+        id: product?.id,
+        title: product?.title,
+        state: product?.state,
+        offersCount: (product?.offers || []).length,
+        productKeys: product ? Object.keys(product).slice(0, 15) : 'null',
+      });
+      
       const offers = product?.offers || product?.pricing?.offers || [];
+      console.log('[IAP] getPlans: Android offers:', offers.length, 'items');
+      offers.forEach((o: any, idx: number) => {
+        console.log(`  [Offer ${idx}]:`, { id: o?.id, offerId: o?.offerId, basePlanId: o?.basePlanId });
+      });
 
       const monthlyOffer = offers.find((o: any) => offerLooksLikePlan(o, 'monthly'));
       const yearlyOffer = offers.find((o: any) => offerLooksLikePlan(o, 'yearly'));
+      
+      console.log('[IAP] getPlans: Android monthlyOffer found:', !!monthlyOffer, yearlyOffer, !!yearlyOffer);
 
       return [
         {
@@ -282,8 +349,10 @@ export class IapService {
     }
 
     // iOS
+    console.log('[IAP] getPlans: iOS. productIds =', IAP_CONFIG.ios.monthlyProductId, IAP_CONFIG.ios.yearlyProductId);
     const monthly = store.get?.(IAP_CONFIG.ios.monthlyProductId);
     const yearly = store.get?.(IAP_CONFIG.ios.yearlyProductId);
+    console.log('[IAP] getPlans: iOS monthly:', !!monthly, 'yearly:', !!yearly);
 
     return [
       {
@@ -304,62 +373,150 @@ export class IapService {
   async purchase(plan: PlanId): Promise<IapEntitlement> {
     await this.init();
     const platform = getPlatform();
-    if (platform === 'web') throw new Error('Satın alma sadece mobilde çalışır.');
+    console.log('[IAP] purchase başladı. Platform:', platform, 'Plan:', plan);
+    
+    if (platform === 'web') {
+      console.error('[IAP] purchase: Web platform, error throw.');
+      throw new Error('Satın alma sadece mobilde çalışır.');
+    }
 
     const store = getStore();
-    if (!store) throw new Error('Store not available');
+    if (!store) {
+      console.error('[IAP] purchase: Store not available');
+      throw new Error('Store not available');
+    }
 
     if (platform === 'android') {
+      console.log('[IAP] purchase: Android branch. subscriptionId =', IAP_CONFIG.android.subscriptionId);
       const product = store.get?.(IAP_CONFIG.android.subscriptionId);
-      if (!product) throw new Error('Android subscription product not loaded. (refresh?)');
+      console.log('[IAP] purchase: Android product check:', {
+        found: !!product,
+        id: product?.id,
+        state: product?.state,
+        canPurchase: product?.canPurchase,
+        offersCount: (product?.offers || []).length,
+      });
+      
+      if (!product) {
+        console.error('[IAP] purchase: Android product is null. store.get() failed. Throwing error.');
+        throw new Error('Ürün bilgisi yüklenemedi. Lütfen uygulamayı yeniden başlatın ve tekrar deneyin.');
+      }
+
+      // Check if product can be purchased
+      if (product.state === 'invalid' || product.valid === false) {
+        console.error('[IAP] purchase: Product is invalid. Check Play Console product configuration.');
+        throw new Error('Bu ürün şu anda satın alınamıyor. Play Console yapılandırmasını kontrol edin.');
+      }
 
       const offers = product?.offers || product?.pricing?.offers || [];
+      console.log('[IAP] purchase: Looking for plan:', plan, 'in', offers.length, 'offers');
+      
       const targetOffer = offers.find((o: any) => offerLooksLikePlan(o, plan));
+      console.log('[IAP] purchase: targetOffer (offerLooksLikePlan):', !!targetOffer, targetOffer?.id);
 
       // Fallback: id match
       const fallbackOffer =
         targetOffer ||
         offers.find((o: any) => safeText(o?.id, '').toLowerCase().includes(plan));
+      console.log('[IAP] purchase: fallbackOffer:', !!fallbackOffer, fallbackOffer?.id);
 
       const offerToOrder = fallbackOffer;
+      console.log('[IAP] purchase: Calling store.order() with offer:', !!offerToOrder, offerToOrder?.id);
 
-      if (offerToOrder) {
-        await store.order?.(offerToOrder);
-      } else {
-        // Son fallback: product direkt
-        await store.order?.(product);
+      try {
+        if (offerToOrder) {
+          await store.order?.(offerToOrder);
+        } else {
+          // Son fallback: product direkt
+          console.log('[IAP] purchase: No offer found, ordering product directly');
+          await store.order?.(product);
+        }
+      } catch (orderError: any) {
+        console.error('[IAP] purchase: order() error:', orderError);
+        
+        // Parse specific billing errors
+        const errorMessage = orderError?.message || String(orderError);
+        
+        if (errorMessage.includes('BillingUnavailable') || 
+            errorMessage.includes('not configured for billing') ||
+            errorMessage.includes('faturalandırılmak üzere yapılandırılmadı')) {
+          throw new Error(
+            'Bu uygulama henüz Google Play faturalandırması için yapılandırılmamış.\n\n' +
+            '• Uygulamanın Play Store\'da "Açık Test" veya "Üretim" aşamasında olduğundan emin olun.\n' +
+            '• Play Console\'da abonelik ürünlerinin "Aktif" durumda olduğunu kontrol edin.\n' +
+            '• Test kullanıcı e-postanızın lisans test kullanıcılarına eklendiğinden emin olun.'
+          );
+        }
+        
+        if (errorMessage.includes('ItemAlreadyOwned')) {
+          throw new Error('Bu abonelik zaten satın alınmış. "Satın Alımları Geri Yükle" seçeneğini deneyin.');
+        }
+        
+        if (errorMessage.includes('UserCancelled') || errorMessage.includes('cancelled')) {
+          throw new Error('Satın alma işlemi iptal edildi.');
+        }
+        
+        if (errorMessage.includes('DeveloperError')) {
+          throw new Error(
+            'Geliştirici yapılandırma hatası. Play Console\'daki ürün ID\'lerini kontrol edin.'
+          );
+        }
+        
+        throw new Error(errorMessage || 'Satın alma işlemi başarısız oldu.');
       }
 
       // Refresh + entitlement check
+      console.log('[IAP] purchase: Calling store.refresh()...');
       try {
         await store.refresh?.();
-      } catch {}
+        console.log('[IAP] purchase: store.refresh() completed');
+      } catch (e) {
+        console.error('[IAP] purchase: store.refresh() error:', e);
+      }
 
       const ent = this.getEntitlementSync();
+      console.log('[IAP] purchase: After refresh, entitlement:', { isPremium: ent.isPremium, activePlan: ent.activePlan });
+      
       if (!ent.isPremium) {
+        console.error('[IAP] purchase: Premium not verified after purchase attempt');
         throw new Error('Satın alma tamamlanamadı / premium doğrulanamadı (client-only).');
       }
       // planı mümkün olduğunca set etmeye çalış
       ent.activePlan = ent.activePlan || plan;
       ent.source = 'play';
+      console.log('[IAP] purchase: Success. Returning entitlement:', ent);
       return ent;
     }
 
     // iOS
     const iosProductId =
       plan === 'monthly' ? IAP_CONFIG.ios.monthlyProductId : IAP_CONFIG.ios.yearlyProductId;
+    console.log('[IAP] purchase: iOS branch. productId:', iosProductId);
 
     const product = store.get?.(iosProductId);
-    if (!product) throw new Error('iOS product not loaded. App Store Connect product id kontrol et.');
+    console.log('[IAP] purchase: iOS product:', !!product, product?.id);
+    
+    if (!product) {
+      console.error('[IAP] purchase: iOS product not found');
+      throw new Error('iOS product not loaded. App Store Connect product id kontrol et.');
+    }
 
+    console.log('[IAP] purchase: Calling store.order() for iOS');
     await store.order?.(product);
 
+    console.log('[IAP] purchase: Calling store.refresh() for iOS');
     try {
       await store.refresh?.();
-    } catch {}
+      console.log('[IAP] purchase: iOS store.refresh() completed');
+    } catch (e) {
+      console.error('[IAP] purchase: iOS store.refresh() error:', e);
+    }
 
     const ent = this.getEntitlementSync();
+    console.log('[IAP] purchase: iOS after refresh, entitlement:', { isPremium: ent.isPremium });
+    
     if (!ent.isPremium) {
+      console.error('[IAP] purchase: iOS premium not verified');
       throw new Error('Satın alma tamamlanamadı / premium doğrulanamadı (client-only).');
     }
     ent.activePlan = ent.activePlan || plan;
@@ -381,9 +538,16 @@ export class IapService {
       // bazı android sürümlerinde restorePurchases olmayabilir
     }
 
+    // cordova-plugin-purchase v13+: update() kullan, yoksa refresh()
     try {
-      await store.refresh?.();
-    } catch {}
+      if (typeof store.update === 'function') {
+        await store.update();
+      } else if (typeof store.refresh === 'function') {
+        await store.refresh();
+      }
+    } catch (err) {
+      console.warn('[IAP] restore refresh/update hatası:', err);
+    }
 
     return this.getEntitlementSync();
   }

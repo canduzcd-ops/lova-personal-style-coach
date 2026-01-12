@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, X, Crown, RefreshCw, ExternalLink } from 'lucide-react';
+import { Check, X, Crown, RefreshCw, ExternalLink, Shield } from 'lucide-react';
 import { Button } from '../components/Shared';
 import { SUBSCRIPTION_PLANS, UserProfile } from '../types';
 import { iapService, PlanId } from '../services/iapService';
 import { Capacitor } from '@capacitor/core';
 import { usePremium } from '../contexts/PremiumContext';
+import { track } from '../services/telemetry';
 
 interface Props {
   user: UserProfile;
   onClose: () => void;
   onSuccess: (updatedUser: UserProfile) => void;
+  reason?: string;
+  source?: 'dashboard' | 'profile' | 'limit' | 'wardrobe' | null;
 }
 
 type PriceState = {
@@ -17,7 +20,7 @@ type PriceState = {
   yearly?: string;
 };
 
-export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => {
+export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess, reason, source }) => {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('yearly');
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -25,10 +28,23 @@ export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => 
   const [iapReady, setIapReady] = useState<boolean>(false);
   const [iapError, setIapError] = useState<string | null>(null);
   const premium = usePremium();
+  const isPremiumActive = premium.isPremium;
 
   const isNative = useMemo(() => Capacitor.isNativePlatform(), []);
 
+  const termsUrl = import.meta.env.VITE_TERMS_URL as string | undefined;
+  const privacyUrl = import.meta.env.VITE_PRIVACY_URL as string | undefined;
+
+  const reasonCopy = useMemo(() => {
+    if (reason) return reason;
+    if (source === 'limit') return 'Ücretsiz deneme hakkın doldu. Sınırsız devam et.';
+    if (source === 'wardrobe') return 'Dolabını sınırsız açmak için Premium’a geç.';
+    if (source === 'profile') return 'Profilinden Premium’a geçerek tüm özellikleri aç.';
+    return 'Premium ile tüm özellikler açılır.';
+  }, [reason, source]);
+
   useEffect(() => {
+    track('premium_opened', { source: source || 'unknown', reason: reason || 'default' });
     (async () => {
       try {
         setIapError(null);
@@ -52,10 +68,16 @@ export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => 
   }, []);
 
   const handlePurchase = async () => {
+    if (isPremiumActive) {
+      onClose();
+      return;
+    }
+    track('premium_purchase_start', { plan: selectedPlan });
     setLoading(true);
     try {
       if (!isNative) {
         alert('Satın alma sadece Store üzerinden yüklenen sürümde çalışır.');
+        track('premium_purchase_failed', { plan: selectedPlan, reason: 'web_only' });
         return;
       }
 
@@ -64,52 +86,64 @@ export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => 
 
       if (!ent.isPremium) {
         alert('Satın alma tamamlandı ama premium doğrulanamadı.');
+        track('premium_purchase_failed', { plan: selectedPlan, reason: 'verification_failed' });
         return;
       }
 
       premium.setPlan(selectedPlan);
       alert('Satın alma başarılı! Premium aktif.');
+      track('premium_purchase_success', { plan: selectedPlan });
       onSuccess(user);
     } catch (error: any) {
       console.error(error);
       alert(error?.message || 'Satın alma işlemi başarısız oldu.');
+      track('premium_purchase_failed', { plan: selectedPlan, reason: error?.code || 'unknown' });
     } finally {
       setLoading(false);
     }
   };
 
   const handleRestore = async () => {
+    if (isPremiumActive) {
+      onClose();
+      return;
+    }
+    track('premium_restore_start', {});
     setRestoring(true);
     try {
       if (!isNative) {
         alert('Satın alma sadece Store üzerinden yüklenen sürümde çalışır.');
+        track('premium_restore_failed', { reason: 'web_only' });
         return;
       }
 
       const refreshed = await premium.refresh();
       if (refreshed.isPremium) {
         alert('Satın alımlar geri yüklendi.');
+        track('premium_restore_success', {});
       } else {
         premium.clear();
         alert('Bu hesapta aktif abonelik bulunamadı.');
+        track('premium_restore_failed', { reason: 'no_subscription' });
       }
       onSuccess(user);
     } catch (error: any) {
       console.error(error);
       alert(error?.message || 'Restore işlemi başarısız oldu.');
+      track('premium_restore_failed', { reason: error?.code || 'unknown' });
     } finally {
       setRestoring(false);
     }
   };
 
   const openPrivacy = () => {
-    // TODO: kendi URL’lerinle değiştir
-    window.open('https://racalabs.com/privacy', '_blank', 'noopener,noreferrer');
+    if (!privacyUrl) return;
+    window.open(privacyUrl, '_blank', 'noopener,noreferrer');
   };
 
   const openTerms = () => {
-    // TODO: kendi URL’lerinle değiştir
-    window.open('https://racalabs.com/terms', '_blank', 'noopener,noreferrer');
+    if (!termsUrl) return;
+    window.open(termsUrl, '_blank', 'noopener,noreferrer');
   };
 
   const features = [
@@ -129,7 +163,7 @@ export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => 
       <div className="h-64 relative bg-surface flex-shrink-0">
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-page z-10"></div>
         <img
-          src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&q=80"
+          src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?fm=jpg&fit=crop&q=80"
           className="w-full h-full object-cover opacity-80 animate-scale-in sepia-[0.2]"
           alt="Premium Fashion"
         />
@@ -146,23 +180,26 @@ export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => 
             <Crown size={12} fill="currentColor" /> Lova Premium
           </div>
           <h2 className="text-4xl font-serif text-primary leading-none">
-            Tarzını<br />Limitlere Takılmadan Yansıt.
+            Stilini Keşfet<br />Limitlere Takılmadan.
           </h2>
+          <div className="mt-2 inline-flex items-center gap-2 bg-white/80 text-primary px-3 py-1.5 rounded-full text-[11px] font-semibold shadow-sm">
+            <Shield size={14} /> {reasonCopy}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-page">
         {/* IAP Status */}
         {!isNative && (
-          <div className="mb-4 p-3 rounded-xl border border-border/40 bg-white/40 text-xs text-secondary">
-            Bu ekran mobilde “satın alma” yapar. Şu an web’de görüntülüyorsun.
+          <div className="mb-4 p-3 rounded-xl border border-accent/20 bg-accent/10 text-xs text-secondary">
+            💡 Satın alma sadece iOS/Android uygulamasında aktif. Web versiyonda özellikleri keşfet.
           </div>
         )}
 
         {isNative && !iapReady && (
-          <div className="mb-4 p-3 rounded-xl border border-border/40 bg-white/40 text-xs text-secondary">
-            Satın alma sistemi hazırlanıyor…
-            {iapError ? <div className="mt-1 text-red-500">{iapError}</div> : null}
+          <div className="mb-4 p-3 rounded-xl border border-accent/20 bg-accent/10 text-xs text-secondary">
+            ⏳ Satın alma sistemi hazırlanıyor…
+            {iapError ? <div className="mt-1 text-red-500">❌ {iapError}</div> : null}
           </div>
         )}
 
@@ -235,52 +272,105 @@ export const PremiumScreen: React.FC<Props> = ({ user, onClose, onSuccess }) => 
 
         {/* Actions */}
         <div className="mt-auto space-y-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-          <Button
-            onClick={handlePurchase}
-            disabled={loading || (isNative && !iapReady)}
-            variant="primary"
-            className="shadow-lg hover:shadow-glow"
-          >
-            {loading ? 'İşleniyor...' : (selectedPlan === 'yearly' ? 'Yıllık Planla Başla' : 'Aylık Planla Başla')}
-          </Button>
+          {isPremiumActive ? (
+            <>
+              <div className="p-4 rounded-2xl border border-accent/40 bg-accent/10 text-primary flex items-center gap-3">
+                <Crown size={18} className="text-accent" />
+                <div>
+                  <div className="text-sm font-bold text-primary">Premium Aktif</div>
+                  <div className="text-[11px] text-secondary">Tüm özellikler açık. Keyfini çıkar.</div>
+                </div>
+              </div>
+              <button
+                onClick={() => iapService.openManageSubscriptions()}
+                className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-[16px] border border-border/40 bg-transparent text-secondary font-bold text-xs hover:text-primary transition-colors"
+              >
+                Aboneliği Yönet <ExternalLink size={14} />
+              </button>
+              <Button onClick={onClose} variant="secondary" className="shadow-sm">
+                Kapat
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={handlePurchase}
+                disabled={loading || (isNative && !iapReady)}
+                variant="primary"
+                className="shadow-lg hover:shadow-glow"
+              >
+                {loading ? 'İşleniyor...' : (selectedPlan === 'yearly' ? 'Yıllık Planla Başla' : 'Aylık Planla Başla')}
+              </Button>
 
-          <button
-            onClick={handleRestore}
-            disabled={restoring || (isNative && !iapReady)}
-            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-[16px] border border-border/40 bg-white/40 text-primary font-bold text-xs hover:bg-white/60 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={14} />
-            {restoring ? 'Geri yükleniyor…' : 'Satın Alımları Geri Yükle'}
-          </button>
+              <button
+                onClick={handleRestore}
+                disabled={restoring || (isNative && !iapReady)}
+                className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-[16px] border border-border/40 bg-white/40 text-primary font-bold text-xs hover:bg-white/60 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={14} />
+                {restoring ? 'Geri yükleniyor…' : 'Satın Alımları Geri Yükle'}
+              </button>
 
-          <button
-            onClick={() => iapService.openManageSubscriptions()}
-            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-[16px] border border-border/40 bg-transparent text-secondary font-bold text-xs hover:text-primary transition-colors"
-          >
-            Aboneliği Yönet <ExternalLink size={14} />
-          </button>
+              <div className="bg-surface dark:bg-surface-dark border border-border/60 dark:border-border-dark/60 rounded-2xl p-4 text-left space-y-2">
+                <div className="flex items-start gap-3 text-sm text-primary dark:text-primary-dark">
+                  <Shield size={16} className="text-accent mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Güvenli Ödeme</div>
+                    <div className="text-[11px] text-secondary dark:text-secondary-dark">Apple Pay ve Google Play tarafından korunan ödeme altyapısı.</div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 text-sm text-primary dark:text-primary-dark">
+                  <Check size={16} className="text-accent mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Kolay İptal</div>
+                    <div className="text-[11px] text-secondary dark:text-secondary-dark">İstediğin zaman iptal et. Yenileme tarihinden öncesi yeterli.</div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 text-sm text-primary dark:text-primary-dark">
+                  <RefreshCw size={16} className="text-accent mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Satın Alımları Geri Al</div>
+                    <div className="text-[11px] text-secondary dark:text-secondary-dark">Cihaz değiştirirsen aboneliği geri yükle butonunu kullan.</div>
+                  </div>
+                </div>
+              </div>
 
-          <div className="flex items-center justify-center gap-4 pt-1">
-            <button onClick={openTerms} className="text-[10px] text-secondary/70 hover:text-primary font-bold">
-              Şartlar
-            </button>
-            <span className="text-secondary/30 text-[10px]">•</span>
-            <button onClick={openPrivacy} className="text-[10px] text-secondary/70 hover:text-primary font-bold">
-              Gizlilik
-            </button>
-          </div>
+              <button
+                onClick={() => iapService.openManageSubscriptions()}
+                className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-[16px] border border-border/40 bg-transparent text-secondary font-bold text-xs hover:text-primary transition-colors"
+              >
+                Aboneliği Yönet <ExternalLink size={14} />
+              </button>
 
-          <button
-            onClick={onClose}
-            className="w-full text-center text-xs text-secondary/60 hover:text-primary transition-colors font-bold pt-1"
-          >
-            Ücretsiz versiyon ile devam et
-          </button>
+              {(termsUrl || privacyUrl) && (
+                <div className="flex items-center justify-center gap-4 pt-1">
+                  {termsUrl && (
+                    <button onClick={openTerms} className="text-[10px] text-secondary/70 hover:text-primary font-bold">
+                      Şartlar
+                    </button>
+                  )}
+                  {termsUrl && privacyUrl && <span className="text-secondary/30 text-[10px]">•</span>}
+                  {privacyUrl && (
+                    <button onClick={openPrivacy} className="text-[10px] text-secondary/70 hover:text-primary font-bold">
+                      Gizlilik
+                    </button>
+                  )}
+                </div>
+              )}
 
-          <p className="text-center text-[9px] text-secondary/40 mt-1 leading-relaxed px-4">
-            Ödeme, onayınızın ardından hesabınızdan tahsil edilir. Abonelik otomatik yenilenir.
-            İptal edilmediği sürece dönem sonunda devam eder.
-          </p>
+              <button
+                onClick={onClose}
+                className="w-full text-center text-xs text-secondary/60 hover:text-primary transition-colors font-bold pt-1"
+              >
+                Şimdilik ücretsiz versiyon kullan
+              </button>
+
+              <p className="text-center text-[9px] text-secondary/40 mt-2 leading-relaxed px-4">
+                Abonelik, onaydan hemen sonra tahsil edilir. Her dönem sonunda otomatik yenilenir.
+                İstediğin zaman Aboneliği Yönet butonundan iptal edebilirsin.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

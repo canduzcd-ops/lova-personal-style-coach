@@ -47,5 +47,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Kombin önerileri için fotoğraf çekebilmemiz gerekiyor.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Dolabına parça eklemek için fotoğraflarına erişmemiz gerekiyor.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Seçtiğin parçaları kaydetmek için izin gerekiyor.</string>
 </dict>
 </plist>

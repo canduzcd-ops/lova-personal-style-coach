@@ -9,14 +9,14 @@ interface Props {
 const SLIDES = [
   {
     id: 1,
-    image: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?q=80&w=1470&auto=format&fit=crop", 
+    image: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?q=80&w=1470&fm=jpg&fit=crop", 
     title: "Stilini\nYönet.",
     subtitle: "Gardırobundaki kaosu, kişisel stilinin\nen güçlü silahına dönüştür.",
     btnText: "Devam Et"
   },
   {
     id: 2,
-    image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?q=80&w=1473&auto=format&fit=crop",
+    image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?q=80&w=1473&fm=jpg&fit=crop",
     title: "Sihri\nKeşfet.",
     subtitle: "Yapay zeka asistanın ile her gün\npodyum ışıltısını yakala.",
     btnText: "Lova'ya Giriş"
@@ -40,7 +40,10 @@ export const IntroScreen: React.FC<Props> = ({ onComplete }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-page font-sans overflow-hidden">
+    <div 
+      className="fixed inset-0 z-[100] bg-page font-sans"
+      style={{ touchAction: 'pan-y', overflowX: 'hidden' }}
+    >
       {/* Background Images Layer */}
       {SLIDES.map((slide, index) => (
         <div 

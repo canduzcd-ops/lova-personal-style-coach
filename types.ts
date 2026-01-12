@@ -131,6 +131,8 @@ export interface OutfitHistoryEntry {
   liked?: boolean | null;
   createdAt?: string;
   feedbackAt?: string;
+  isFavorite?: boolean;
+  collectionTag?: 'work' | 'weekend' | 'date' | null;
 }
 
 export interface SavedOutfit {

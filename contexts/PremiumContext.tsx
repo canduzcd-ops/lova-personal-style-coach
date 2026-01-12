@@ -32,7 +32,18 @@ export const PremiumProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    refresh();
+    
+    // IAP refresh'i async olarak çağır, hata olursa UI'yi bloke etme
+    const doRefresh = async () => {
+      try {
+        await refresh();
+      } catch (err) {
+        console.warn('[PremiumProvider] Initial refresh failed, continuing without premium state:', err);
+        // Hata olsa bile uygulama açılmaya devam etsin
+      }
+    };
+    
+    doRefresh();
   }, []);
 
   const value = useMemo<PremiumContextValue>(

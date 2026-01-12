@@ -1,5 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { track } from './telemetry';
+import * as engagementLocal from './engagementLocal';
 
 export const notificationService = {
   // Check if notifications are enabled in app prefs AND browser
@@ -10,22 +12,33 @@ export const notificationService = {
 
   // Request browser permission and save preference
   requestPermission: async (): Promise<boolean> => {
+    track('notif_enable_start', {});
     if (!('Notification' in window)) {
       console.warn('This browser does not support desktop notification');
+      track('notif_enable_failed', { reason: 'unsupported' });
       return false;
     }
 
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
         localStorage.setItem('lova_notifications_enabled', 'true');
+        engagementLocal.setNotifEnabled(true);
+        track('notif_enable_success', {});
         return true;
+      }
+      track('notif_enable_failed', { reason: 'permission_denied' });
+      return false;
+    } catch (error) {
+      track('notif_enable_failed', { reason: String(error) });
+      throw error;
     }
-    return false;
   },
 
   // Disable locally without revoking browser permission (which is hard to do via JS)
   disable: () => {
       localStorage.setItem('lova_notifications_enabled', 'false');
+      engagementLocal.setNotifEnabled(false);
   },
 
   // Send a notification if allowed
@@ -36,9 +49,9 @@ export const notificationService = {
     if (localStorage.getItem('lova_notifications_enabled') === 'true' && Notification.permission === 'granted') {
       try {
         new Notification(title, { 
-            body, 
-            icon: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=128&h=128&fit=crop', // Fashion placeholder icon
-            silent: false
+          body, 
+          icon: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=128&h=128&fit=crop&fm=jpg', // Fashion placeholder icon
+          silent: false
         });
       } catch (e) {
         console.error("Notification sending failed", e);

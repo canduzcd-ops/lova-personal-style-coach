@@ -41,7 +41,7 @@ const mockUser = {
 describe('PremiumScreen (web)', () => {
     it('renders without crashing on web', async () => {
         render(_jsx(PremiumProvider, { children: _jsx(PremiumScreen, { user: mockUser, onClose: () => { }, onSuccess: () => { } }) }));
-        expect(await screen.findByText(/Premium/i)).toBeInTheDocument();
+        expect(await screen.findByRole('heading', { name: /Stilini Keşfet/i })).toBeInTheDocument();
         expect(Capacitor.isNativePlatform).toHaveBeenCalled();
     });
 });

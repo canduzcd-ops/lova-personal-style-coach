@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "659872866512-1eocl8jfpcrbr180rkif98fjv7mo9p2r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.racalabs.thelova",
+            "certificate_hash": "6f5028151e340dabce21472a95465acecdc70d57"
+          }
+        },
+        {
           "client_id": "659872866512-a51pofra536p1jiruhb48dva7bv7520n.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -37,6 +45,13 @@
             {
               "client_id": "659872866512-80aongfh4fu64ebbvv2n36tr5dj0v179.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "659872866512-o0f9m5kjcaq0b5q0uev95sq8h1fomev5.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.racalabs.thelova"
+              }
             }
           ]
         }

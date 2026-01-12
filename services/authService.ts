@@ -2,6 +2,9 @@
 import { UserProfile, FREE_LIMITS } from '../types';
 import { auth, db } from './firebaseClient';
 import firebase from 'firebase/compat/app';
+import { setUserContext, track } from './telemetry';
+import { Capacitor } from '@capacitor/core';
+import { disableToken } from './pushTokenService';
 
 // Hardcoded Premium/Admin Emails
 const SPECIAL_EMAILS = ['surailkay@gmail.com', 'test@lova.com', 'test1@lova.com'];
@@ -80,12 +83,18 @@ export const authService = {
         const docRef = db.collection("users").doc(user.uid);
         const docSnap = await docRef.get();
 
-        if (!docSnap.exists) {
-             console.warn("Profile missing on login, attempting lazy creation...");
-             return await authService.createDefaultProfileFallback(user, null);
-        }
+           if (!docSnap.exists) {
+               console.warn("Profile missing on login, attempting lazy creation...");
+               const fallbackProfile = await authService.createDefaultProfileFallback(user, null);
+               setUserContext({ id: fallbackProfile.id, email: fallbackProfile.email });
+               track('auth_login_success', { hasUser: true });
+               return fallbackProfile;
+           }
 
-        return mapDocumentToUser(user.uid, docSnap.data());
+           const mapped = mapDocumentToUser(user.uid, docSnap.data());
+           setUserContext({ id: mapped.id, email: mapped.email });
+           track('auth_login_success', { hasUser: true });
+           return mapped;
 
     } catch (error: any) {
         console.error("Login error:", error);
@@ -95,6 +104,7 @@ export const authService = {
         } else if (error.code === 'auth/too-many-requests') {
             msg = "Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.";
         }
+        track('auth_login_failed', { error: error.code, errorCode: msg });
         throw new Error(msg);
     }
   },
@@ -117,18 +127,15 @@ export const authService = {
 
         // 4. Create Firestore Document
         
-        // SPECIAL RULE: Special emails get Lifetime Premium
-        const isSpecialAdmin = SPECIAL_EMAILS.includes(email.toLowerCase());
-
         const newProfile = {
             email: email,
             name: name,
             styles: styles,
             joined_at: new Date().toISOString(),
-            // Only admin is premium, others are NOT premium
-            is_premium: isSpecialAdmin,
-            premium_type: isSpecialAdmin ? 'lifetime' : null,
-            subscription_end_date: null, // No end date for free or lifetime
+            // Premium fields are controlled server-side; keep default values on client create
+            is_premium: false,
+            premium_type: null,
+            subscription_end_date: null,
             theme: 'light',
             wardrobe_count: 0,
             daily_scan_count: 0,
@@ -139,6 +146,9 @@ export const authService = {
         };
 
         await db.collection("users").doc(user.uid).set(newProfile);
+
+        // Track registration success
+        track('auth_register_success', { hasUser: true });
 
         // Return null to enforce "Check your email" flow in the UI
         return null; 
@@ -153,6 +163,7 @@ export const authService = {
         } else if (error.code === 'auth/invalid-email') {
              msg = "Geçersiz e-posta adresi.";
         }
+        track('auth_register_failed', { error: error.code, errorCode: msg });
         throw new Error(msg);
     }
   },
@@ -166,9 +177,10 @@ export const authService = {
       name: user.displayName || user.email?.split('@')[0] || 'Kullanıcı',
       styles: ['minimal'],
       joined_at: new Date().toISOString(),
-      is_premium: isSpecialAdmin,
-      premium_type: isSpecialAdmin ? 'lifetime' : null,
-      subscription_end_date: null,
+            // Premium flags remain default on client-created docs
+            is_premium: false,
+            premium_type: null,
+            subscription_end_date: null,
       theme: 'light',
       wardrobe_count: 0,
       daily_scan_count: 0,
@@ -177,8 +189,10 @@ export const authService = {
       trial_combinations_count: 0
     };
 
-    await db.collection("users").doc(user.uid).set(newProfile);
-    return mapDocumentToUser(user.uid, newProfile);
+        await db.collection("users").doc(user.uid).set(newProfile);
+        const mapped = mapDocumentToUser(user.uid, newProfile);
+        setUserContext({ id: mapped.id, email: mapped.email });
+        return mapped;
   },
 
     // Password Reset
@@ -224,6 +238,19 @@ export const authService = {
 
   logout: async (): Promise<void> => {
     localStorage.removeItem('lova_remember_me');
+    setUserContext();
+    
+    // Disable push tokens on logout (native only)
+    const platform = Capacitor.getPlatform() as 'ios' | 'android' | 'web';
+    if (platform === 'ios' || platform === 'android') {
+      try {
+        await disableToken({ platform: platform as 'ios' | 'android' });
+      } catch (err) {
+        console.warn('Error disabling token on logout:', err);
+        // Don't throw - logout should succeed even if token disable fails
+      }
+    }
+    
     await auth.signOut();
   },
 
@@ -382,5 +409,145 @@ export const authService = {
       }
 
       await docRef.update(payload);
+  },
+
+  // Check for redirect result (call this on app init for Android)
+  checkGoogleRedirectResult: async (): Promise<UserProfile | null> => {
+    try {
+      const result = await auth.getRedirectResult();
+      if (result && result.user) {
+        console.log('[Auth] Google redirect result found');
+        const user = result.user;
+        
+        const docRef = db.collection('users').doc(user.uid);
+        const docSnap = await docRef.get();
+
+        let mapped: UserProfile;
+        if (!docSnap.exists) {
+          mapped = await authService.createDefaultProfileFallback(user, { source: 'google' });
+        } else {
+          mapped = mapDocumentToUser(user.uid, docSnap.data());
+        }
+
+        setUserContext({ id: mapped.id, email: mapped.email });
+        track('auth_login_success', { hasUser: true, method: 'google_redirect' });
+        return mapped;
+      }
+      return null;
+    } catch (error) {
+      console.error('[Auth] Redirect result error:', error);
+      return null;
+    }
+  },
+
+  // SOCIAL LOGIN: Google Sign-In (Web + Native)
+  loginWithGoogle: async (): Promise<UserProfile> => {
+    try {
+      const platform = Capacitor.getPlatform();
+      let userCredential: firebase.auth.UserCredential | null = null;
+
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
+      
+      // Android için redirect kullan, diğer platformlarda popup
+      if (platform === 'android') {
+        console.log('[Auth] Using signInWithRedirect for Android');
+        await auth.signInWithRedirect(provider);
+        // Redirect sonrası uygulama yeniden başlatılacak
+        // getRedirectResult App.tsx'te çağrılıyor
+        throw new Error('REDIRECT_IN_PROGRESS');
+      } else {
+        console.log('[Auth] Using signInWithPopup for platform:', platform);
+        userCredential = await auth.signInWithPopup(provider);
+      }
+
+      const user = userCredential?.user;
+      if (!user) throw new Error('Google giriş başarısız.');
+
+      // Check if profile exists
+      const docRef = db.collection('users').doc(user.uid);
+      const docSnap = await docRef.get();
+
+      let mapped: UserProfile;
+      if (!docSnap.exists) {
+        // Create profile from Google data
+        mapped = await authService.createDefaultProfileFallback(user, { source: 'google' });
+      } else {
+        mapped = mapDocumentToUser(user.uid, docSnap.data());
+      }
+
+      setUserContext({ id: mapped.id, email: mapped.email });
+      track('auth_login_success', { hasUser: true, method: 'google', platform });
+      return mapped;
+    } catch (error: any) {
+      // Redirect durumu normal bir hata değil
+      if (error.message === 'REDIRECT_IN_PROGRESS') {
+        throw error;
+      }
+      
+      console.error('Google login error:', error);
+      
+      let msg = 'Google giriş başarısız.';
+      if (error.code === 'auth/popup-closed-by-user') {
+        msg = 'Giriş penceresi kapatıldı.';
+      } else if (error.code === 'auth/popup-blocked') {
+        msg = 'Açılır pencere engellendi. Lütfen tarayıcı ayarlarını kontrol edin.';
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        msg = 'Giriş işlemi iptal edildi.';
+      } else if (error.code === 'auth/network-request-failed') {
+        msg = 'Ağ bağlantısı hatası. İnternet bağlantınızı kontrol edin.';
+      } else if (error.code === 'auth/internal-error') {
+        msg = 'Kimlik doğrulama hatası. SHA-1 sertifikası yapılandırmasını kontrol edin.';
+      } else if (error.message) {
+        msg = error.message;
+      }
+      track('auth_login_failed', { error: error.code, errorCode: msg, method: 'google' });
+      throw new Error(msg);
+    }
+  },
+
+  // SOCIAL LOGIN: Apple Sign-In (iOS native only)
+  loginWithApple: async (): Promise<UserProfile> => {
+    try {
+      const platform = Capacitor.getPlatform();
+      if (platform === 'ios') {
+        // Native: Use capacitor-apple-login
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { AppleLogin } = require('capacitor-apple-login');
+        const result = await AppleLogin.signIn();
+        if (!result || !result.identityToken) {
+          throw new Error('Apple kimlik doğrulama başarısız.');
+        }
+        // Firebase ile Apple kimliğini doğrula
+        const credential = firebase.auth.OAuthProvider('apple.com').credential({
+          idToken: result.identityToken,
+        });
+        const userCredential = await auth.signInWithCredential(credential);
+        const user = userCredential.user;
+        if (!user) throw new Error('Apple ile giriş başarısız.');
+        // Profil kontrolü ve oluşturma
+        const docRef = db.collection('users').doc(user.uid);
+        const docSnap = await docRef.get();
+        let mapped: UserProfile;
+        if (!docSnap.exists) {
+          mapped = await authService.createDefaultProfileFallback(user, { source: 'apple' });
+        } else {
+          mapped = mapDocumentToUser(user.uid, docSnap.data());
+        }
+        setUserContext({ id: mapped.id, email: mapped.email });
+        track('auth_login_success', { hasUser: true, method: 'apple', platform });
+        return mapped;
+      } else if (platform === 'web') {
+        throw new Error('Apple Sign-In yalnızca iOS uygulamasında desteklenir.');
+      } else {
+        throw new Error('Desteklenmeyen platform');
+      }
+    } catch (error: any) {
+      console.error('Apple login error:', error);
+      let msg = 'Apple giriş başarısız.';
+      track('auth_login_failed', { error: error.code, errorCode: msg });
+      throw new Error(msg);
+    }
   }
 };

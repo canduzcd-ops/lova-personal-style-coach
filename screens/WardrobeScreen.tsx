@@ -10,33 +10,10 @@ import { wardrobeService } from '../services/wardrobeService';
 import { useTranslation } from 'react-i18next';
 import { useImagePicker } from '../hooks/useImagePicker';
 import { ImagePickerModal } from '../components/ImagePickerModal';
-
-// Simplified compression logic
-const compressImage = (base64: string): Promise<string> => {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.src = base64;
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_SIZE = 800;
-            let width = img.width;
-            let height = img.height;
-            if (width > height) {
-                if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-            } else {
-                if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-            } else resolve(base64);
-        };
-        img.onerror = () => resolve(base64);
-    });
-};
+import { InlineLoader } from '../components/InlineLoader';
+import { StateCard } from '../components/StateCard';
+import { Toast, ToastType } from '../components/Toast';
+import { maybeNotify } from '../services/engagementService';
 
 const FastImage = React.memo(({ src, alt }: { src?: string, alt: string }) => {
     const [loaded, setLoaded] = useState(false);
@@ -80,18 +57,23 @@ const WardrobeGridItem = React.memo(({ item, onClick }: { item: WardrobeItem, on
 }, (prev, next) => prev.item.id === next.item.id);
 
 interface Props {
-  user: UserProfile;
-  updateUser: (u: UserProfile) => void;
-  onStatsUpdate: (stats: { count: number, uniqueCategories: number }) => void;
-  onTriggerPremium?: () => void;
-  onGenerateWithItem?: (item: WardrobeItem) => void;
+    user: UserProfile;
+    updateUser: (u: UserProfile) => void;
+    onStatsUpdate: (stats: { count: number, uniqueCategories: number }) => void;
+    onTriggerPremium?: (payload: { source: 'wardrobe'; reason?: string }) => void;
+    onGenerateWithItem?: (item: WardrobeItem) => void;
 }
 
 export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdate, onTriggerPremium, onGenerateWithItem }) => {
     const { t } = useTranslation();
   const [items, setItems] = useState<WardrobeItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
+    const [toast, setToast] = useState<{ type: ToastType; title: string; desc?: string } | null>(null);
+    const wardrobeTrialLocked = !user.isPremium && user.trialUsage.wardrobeAccessUsed;
+        const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+        const [uploadError, setUploadError] = useState<string | null>(null);
   
   // Modal States
   const [selectedItem, setSelectedItem] = useState<WardrobeItem | null>(null);
@@ -106,10 +88,12 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
   const [isSaving, setIsSaving] = useState(false);
 
   // Image Picker Hook
-  const handleImageSelected = async (base64: string) => {
+    const handleImageSelected = async (base64: string) => {
     setAddItemStep('preview');
     setIsAnalyzing(true);
     setNewItemImg(base64);
+        setUploadProgress(null);
+        setUploadError(null);
     
     // AI Analysis
     try {
@@ -120,6 +104,8 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
         }
     } catch (err) {
         console.error("AI Analysis Failed", err);
+        const message = err instanceof Error && err.message ? err.message : t('wardrobe.alerts.generic');
+        setToast({ type: 'error', title: 'Analiz başarısız', desc: message });
     } finally {
         setIsAnalyzing(false);
     }
@@ -140,14 +126,20 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
     return () => { document.body.style.overflow = ''; };
   }, [isAdding, selectedItem]);
 
-  useEffect(() => { loadItems(); }, []);
+    useEffect(() => { loadItems(); }, []);
 
   const loadItems = async () => {
+      setLoadingItems(true);
+      setLoadError(null);
       try {
           const data = await wardrobeService.getWardrobeItemsForCurrentUser();
           setItems(data);
           onStatsUpdate({ count: data.length, uniqueCategories: new Set(data.map(i=>i.type)).size });
-      } catch(e) { console.error(e); }
+      } catch(e) {
+          console.error(e);
+          const message = e instanceof Error && e.message ? e.message : t('wardrobe.alerts.generic');
+          setLoadError(message);
+      }
       setLoadingItems(false);
   };
 
@@ -162,24 +154,44 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
         setNewItemName(''); 
         setNewItemType('ust');
         setIsAnalyzing(false);
+                setUploadProgress(null);
+                setUploadError(null);
       }, 300);
   };
 
-  const handleSave = async () => {
-    if(!newItemName) return alert(t('wardrobe.alerts.nameRequired'));
-      setIsSaving(true);
-      try {
-         const newItem = await wardrobeService.addWardrobeItem({
-             name: newItemName, type: newItemType, image: newItemImg || undefined, color: t('wardrobe.item.unknownColor'), aiTags: undefined
-         });
-         setItems(prev => [newItem, ...prev]);
-         updateUser(await authService.incrementUsage(user, 'wardrobe'));
+    const handleSave = async () => {
+        if(!newItemName) {
+            setToast({ type: 'error', title: t('wardrobe.alerts.nameRequired') });
+            return;
+        }
+        setUploadError(null);
+        setUploadProgress(0);
+            setIsSaving(true);
+            try {
+             const isFirstItem = items.length === 0;
+             const newItem = await wardrobeService.addWardrobeItem({
+                 name: newItemName, type: newItemType, image: newItemImg || undefined, color: t('wardrobe.item.unknownColor'), aiTags: undefined
+             }, {
+                onUploadProgress: (pct) => setUploadProgress(pct),
+             });
+             setItems(prev => [newItem, ...prev]);
+             updateUser(await authService.incrementUsage(user, 'wardrobe'));
          
-         resetAddModal();
+             // Send first item notification
+             if (isFirstItem) {
+               maybeNotify('wardrobe_first_item_added').catch(err => console.warn('Engagement notif failed', err));
+             }
+             
+             resetAddModal();
 
-    } catch(e) { alert(t('wardrobe.alerts.generic')); }
-      setIsSaving(false);
-  };
+        } catch(e) {
+            const message = e instanceof Error && e.message ? e.message : t('wardrobe.alerts.generic');
+            setUploadError(message);
+            setUploadProgress(null);
+            setToast({ type: 'error', title: 'Kaydedilemedi', desc: message });
+        }
+            setIsSaving(false);
+    };
 
   const handleDelete = async (id: string) => {
     if(!confirm(t('wardrobe.alerts.confirmDelete'))) return;
@@ -187,6 +199,20 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
       setItems(prev => prev.filter(i => i.id !== id));
       setSelectedItem(null);
   };
+
+  if (wardrobeTrialLocked) {
+      return (
+          <div className="h-full flex items-center justify-center p-6 bg-page dark:bg-page-dark">
+              <StateCard
+                  type="empty"
+                  title="Deneme tamamlandı"
+                  desc="Dolabın kilidi açmak için Premium'a geçebilirsin."
+                  actionLabel="Premium'a geç"
+                  onAction={() => onTriggerPremium?.({ source: 'wardrobe', reason: 'Dolap deneme hakkın bitti.' })}
+              />
+          </div>
+      );
+  }
 
   return (
     <div className="h-full flex flex-col bg-page dark:bg-page-dark relative">
@@ -215,17 +241,26 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
         {/* Content Grid */}
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
             {loadingItems ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <Loader2 className="animate-spin text-accent" size={32}/>
-                    <p className="text-xs text-secondary font-medium tracking-widest uppercase">{t('wardrobe.loading')}</p>
+                <InlineLoader label={t('wardrobe.loading')} />
+            ) : loadError ? (
+                <div className="py-12">
+                    <StateCard
+                        type="error"
+                        title="Dolap yüklenemedi"
+                        desc={loadError}
+                        actionLabel="Tekrar dene"
+                        onAction={loadItems}
+                    />
                 </div>
             ) : filteredItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-20 h-20 bg-surface dark:bg-surface-dark rounded-full flex items-center justify-center mb-6 animate-pulse">
-                        <Shirt size={32} className="text-border dark:text-border-dark"/>
-                    </div>
-                    <p className="text-primary dark:text-primary-dark font-serif text-lg mb-2">{t('wardrobe.empty.title')}</p>
-                    <p className="text-secondary dark:text-secondary-dark text-sm max-w-[200px]">{t('wardrobe.empty.body')}</p>
+                <div className="py-12">
+                    <StateCard
+                        type="empty"
+                        title={t('wardrobe.empty.title')}
+                        desc={t('wardrobe.empty.body')}
+                        actionLabel={t('wardrobe.modal.addButton')}
+                        onAction={() => setIsAdding(true)}
+                    />
                 </div>
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-in">
@@ -310,6 +345,28 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
                                     </div>
                                 )}
 
+                                {uploadProgress !== null && (
+                                    <div className="absolute inset-x-0 bottom-0 p-3 bg-black/60 backdrop-blur-sm text-white">
+                                        <div className="flex items-center justify-between text-xs font-semibold mb-2">
+                                            <span>{t('wardrobe.modal.uploading')}</span>
+                                            <span>{uploadProgress}%</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                                            <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${uploadProgress}%` }}></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {uploadError && (
+                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm text-white flex flex-col items-center justify-center gap-3 p-4">
+                                        <p className="text-sm font-semibold text-center">{uploadError}</p>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setUploadError(null)} className="px-3 py-1.5 bg-transparent border border-white/50 text-white rounded-lg text-xs font-bold hover:bg-white/10">{t('common.cancel')}</button>
+                                            <button onClick={handleSave} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-bold hover:shadow-md">{t('common.retry')}</button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <button 
                                     onClick={() => setAddItemStep('source')}
                                     className="absolute bottom-3 right-3 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md"
@@ -341,10 +398,13 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
                                     </div>
                                 </div>
 
-                                <div className="pt-4">
+                                <div className="pt-4 space-y-2">
                                     <Button onClick={handleSave} disabled={isSaving || isAnalyzing} className="shadow-xl">
                                         {isSaving ? <Loader2 className="animate-spin" /> : t('wardrobe.modal.addButton')}
                                     </Button>
+                                    <p className="text-[11px] text-secondary dark:text-secondary-dark text-center">
+                                        {t('wardrobe.modal.uploadHint', 'Fotoğraflar en fazla 1080px ve sıkıştırılmış olarak yüklenir.')}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -432,6 +492,14 @@ export const WardrobeScreen: React.FC<Props> = ({ user, updateUser, onStatsUpdat
                     </div>
                 </div>
             </div>
+        )}
+        {toast && (
+            <Toast
+                type={toast.type}
+                title={toast.title}
+                desc={toast.desc}
+                onClose={() => setToast(null)}
+            />
         )}
     </div>
   );

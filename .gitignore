@@ -12,6 +12,24 @@ dist
 dist-ssr
 *.local
 
+# Environment files
+.env
+.env.local
+.env.production
+.env.development
+firebase.json
+firestore.rules
+storage.rules
+android/local.properties
+ios/debug.xcconfig
+*.keystore
+*.p12
+*.mobileprovision
+apple-app-site-association
+
+# Patch
+patches/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,5 +40,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env
-.env.local

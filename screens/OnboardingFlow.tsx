@@ -24,7 +24,7 @@ export const OnboardingFlow: React.FC<Props> = ({ onComplete, initialName }) => 
       <div className="fixed inset-0 bg-page text-primary flex flex-col items-center justify-end pb-12 px-8">
         <div className="absolute inset-0 z-0">
              <img 
-                src="https://images.unsplash.com/photo-1549439602-43ebca2327af?q=80&w=1287&auto=format&fit=crop"
+                src="https://images.unsplash.com/photo-1549439602-43ebca2327af?q=80&w=1287&fm=jpg&fit=crop"
                 className="w-full h-full object-cover opacity-90"
              />
              <div className="absolute inset-0 bg-gradient-to-t from-page via-page/60 to-transparent"></div>

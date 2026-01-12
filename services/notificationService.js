@@ -1,5 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { track } from './telemetry';
+import * as engagementLocal from './engagementLocal';
 export const notificationService = {
     // Check if notifications are enabled in app prefs AND browser
     isEnabled: () => {
@@ -9,20 +11,32 @@ export const notificationService = {
     },
     // Request browser permission and save preference
     requestPermission: async () => {
+        track('notif_enable_start', {});
         if (!('Notification' in window)) {
             console.warn('This browser does not support desktop notification');
+            track('notif_enable_failed', { reason: 'unsupported' });
             return false;
         }
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            localStorage.setItem('lova_notifications_enabled', 'true');
-            return true;
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                localStorage.setItem('lova_notifications_enabled', 'true');
+                engagementLocal.setNotifEnabled(true);
+                track('notif_enable_success', {});
+                return true;
+            }
+            track('notif_enable_failed', { reason: 'permission_denied' });
+            return false;
         }
-        return false;
+        catch (error) {
+            track('notif_enable_failed', { reason: String(error) });
+            throw error;
+        }
     },
     // Disable locally without revoking browser permission (which is hard to do via JS)
     disable: () => {
         localStorage.setItem('lova_notifications_enabled', 'false');
+        engagementLocal.setNotifEnabled(false);
     },
     // Send a notification if allowed
     send: (title, body) => {
@@ -33,7 +47,7 @@ export const notificationService = {
             try {
                 new Notification(title, {
                     body,
-                    icon: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=128&h=128&fit=crop', // Fashion placeholder icon
+                    icon: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=128&h=128&fit=crop&fm=jpg', // Fashion placeholder icon
                     silent: false
                 });
             }

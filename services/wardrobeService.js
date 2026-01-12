@@ -2,57 +2,66 @@ import { db, auth } from './firebaseClient';
 import firebase from "firebase/compat/app";
 import { uploadWardrobeImage } from './storageService';
 import { normalizeTagList } from './tagNormalize';
+import { track } from './telemetry';
+import { cacheService, CACHE_KEYS } from './cacheService';
 const COLLECTION_NAME = 'wardrobeItems';
+const UPLOAD_ERROR_MESSAGE = "Fotoğraf yüklenemedi, tekrar deneyin";
 export const wardrobeService = {
     /**
      * Adds a new item to the user's wardrobe in Firestore.
+     * Caches the result for offline access.
      */
-    addWardrobeItem: async (data) => {
+    addWardrobeItem: async (data, options) => {
         const user = auth.currentUser;
         if (!user)
             throw new Error("Kullanıcı oturumu kapalı.");
-        let imageUrl = data.image;
-        if (typeof data.image === 'string' && data.image.startsWith('data:image/')) {
-            try {
-                imageUrl = await uploadWardrobeImage(user.uid, data.image, data.name || data.type);
+        track('wardrobe_add_start', {});
+        let imageUrl = null;
+        try {
+            if (typeof data.image === 'string' && data.image.startsWith('data:image/')) {
+                try {
+                    imageUrl = await uploadWardrobeImage(user.uid, data.image, data.name || data.type, options?.onUploadProgress);
+                }
+                catch (err) {
+                    console.error('Wardrobe image upload failed, aborting add.', err);
+                    track('wardrobe_add_failed', { reason: 'upload_failed', hasImage: true });
+                    throw new Error(UPLOAD_ERROR_MESSAGE);
+                }
             }
-            catch (err) {
-                console.error('Wardrobe image upload failed, keeping base64 inline.', err);
+            else if (typeof data.image === 'string') {
                 imageUrl = data.image;
             }
-        }
-        // Firestore throws error if a field value is undefined. 
-        // We explicitly map optional fields to null if they are undefined.
-        const aiTags = data.aiTags ? {
-            season: data.aiTags.season ?? [],
-            occasion: data.aiTags.occasion ?? [],
-            style: data.aiTags.style ?? [],
-            fabric: data.aiTags.fabric ?? null,
-            fit: data.aiTags.fit ?? null,
-            pattern: data.aiTags.pattern ?? null,
-            aesthetic: data.aiTags.aesthetic ?? []
-        } : null;
-        const stylesSource = data.styleTags ?? aiTags?.style ?? aiTags?.aesthetic ?? [];
-        const colorsSource = data.colorTags ?? (data.color ? [data.color] : []);
-        const tagsNormalized = {
-            styles: normalizeTagList(stylesSource),
-            colors: normalizeTagList(colorsSource),
-        };
-        const payload = {
-            type: data.type,
-            name: data.name,
-            color: data.color ?? null,
-            note: data.note ?? null,
-            image: imageUrl ?? null,
-            aiTags: aiTags,
-            tagsNormalized,
-            userId: user.uid,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        try {
+            // Firestore throws error if a field value is undefined. 
+            // We explicitly map optional fields to null if they are undefined.
+            const aiTags = data.aiTags ? {
+                season: data.aiTags.season ?? [],
+                occasion: data.aiTags.occasion ?? [],
+                style: data.aiTags.style ?? [],
+                fabric: data.aiTags.fabric ?? null,
+                fit: data.aiTags.fit ?? null,
+                pattern: data.aiTags.pattern ?? null,
+                aesthetic: data.aiTags.aesthetic ?? []
+            } : null;
+            const stylesSource = data.styleTags ?? aiTags?.style ?? aiTags?.aesthetic ?? [];
+            const colorsSource = data.colorTags ?? (data.color ? [data.color] : []);
+            const tagsNormalized = {
+                styles: normalizeTagList(stylesSource),
+                colors: normalizeTagList(colorsSource),
+            };
+            const payload = {
+                type: data.type,
+                name: data.name,
+                color: data.color ?? null,
+                note: data.note ?? null,
+                image: imageUrl ?? null,
+                aiTags: aiTags,
+                tagsNormalized,
+                userId: user.uid,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
             const docRef = await db.collection(COLLECTION_NAME).add(payload);
-            // Return the item with the new ID
-            return {
+            track('wardrobe_add_success', { hasImage: !!imageUrl });
+            const newItem = {
                 id: docRef.id,
                 userId: user.uid,
                 ...data,
@@ -60,20 +69,30 @@ export const wardrobeService = {
                 tagsNormalized,
                 createdAt: new Date().toISOString() // Approximate for immediate UI update
             };
+            // Update cache
+            const cachedItems = await cacheService.get(CACHE_KEYS.WARDROBE) || [];
+            cachedItems.unshift(newItem);
+            await cacheService.set(CACHE_KEYS.WARDROBE, cachedItems);
+            return newItem;
         }
         catch (error) {
             console.error("Wardrobe add error:", error);
+            if (error.message !== UPLOAD_ERROR_MESSAGE) {
+                track('wardrobe_add_failed', { reason: 'firestore_error', hasImage: !!imageUrl });
+            }
             throw error;
         }
     },
     /**
      * Fetches all wardrobe items for the current authenticated user.
+     * Uses cache for offline access, falls back to Firestore when online.
      */
     getWardrobeItemsForCurrentUser: async () => {
         const user = auth.currentUser;
         if (!user)
             return [];
         try {
+            // Try to fetch from Firestore
             const querySnapshot = await db.collection(COLLECTION_NAME)
                 .where("userId", "==", user.uid)
                 .orderBy("createdAt", "desc")
@@ -96,29 +115,52 @@ export const wardrobeService = {
                 });
             });
             // Client-side sort by creation time
-            return items.sort((a, b) => {
+            const sortedItems = items.sort((a, b) => {
                 const dateA = a.createdAt || '';
                 const dateB = b.createdAt || '';
                 return dateB.localeCompare(dateA);
             });
+            // Update cache with fresh data
+            await cacheService.set(CACHE_KEYS.WARDROBE, sortedItems);
+            console.log('[Wardrobe] Fetched from Firestore and cached:', sortedItems.length);
+            return sortedItems;
         }
         catch (error) {
-            console.error("Wardrobe fetch error:", error);
+            console.error("[Wardrobe] Firestore fetch error, trying cache:", error);
+            // Fallback to cache if network error
+            const cachedItems = await cacheService.get(CACHE_KEYS.WARDROBE);
+            if (cachedItems && cachedItems.length > 0) {
+                console.log('[Wardrobe] Using cached data:', cachedItems.length);
+                return cachedItems;
+            }
+            // No cache available, re-throw error
             throw error;
         }
     },
     /**
      * Updates a specific wardrobe item.
+     * Updates cache and marks as pending if offline.
      */
-    updateWardrobeItem: async (id, updates) => {
+    updateWardrobeItem: async (id, updates, options) => {
         const user = auth.currentUser;
         if (!user)
             throw new Error("Kullanıcı oturumu kapalı.");
+        let imageUpdate = updates.image;
+        if (typeof imageUpdate === 'string' && imageUpdate.startsWith('data:image/')) {
+            try {
+                imageUpdate = await uploadWardrobeImage(user.uid, imageUpdate, updates.name || updates.type, options?.onUploadProgress);
+            }
+            catch (err) {
+                console.error('Wardrobe image upload failed, aborting update.', err);
+                throw new Error(UPLOAD_ERROR_MESSAGE);
+            }
+        }
         try {
             const docRef = db.collection(COLLECTION_NAME).doc(id);
             // Filter out undefined values from updates to avoid Firestore errors
             // and allow 'null' to clear values if passed explicitly
-            const cleanUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+            const updatesWithImage = { ...updates, image: imageUpdate };
+            const cleanUpdates = Object.entries(updatesWithImage).reduce((acc, [key, value]) => {
                 if (value !== undefined) {
                     acc[key] = value;
                 }
@@ -137,14 +179,38 @@ export const wardrobeService = {
                 ...cleanUpdates,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+            console.log('[Wardrobe] Updated in Firestore:', id);
+            // Update cache
+            const cachedItems = await cacheService.get(CACHE_KEYS.WARDROBE);
+            if (cachedItems) {
+                const updatedCache = cachedItems.map(item => item.id === id ? { ...item, ...updatesWithImage } : item);
+                await cacheService.set(CACHE_KEYS.WARDROBE, updatedCache);
+                console.log('[Wardrobe] Cache updated for item:', id);
+            }
         }
         catch (error) {
-            console.error("Wardrobe update error:", error);
+            console.error('[Wardrobe] Update error:', error);
+            // Update cache optimistically for offline support
+            const cachedItems = await cacheService.get(CACHE_KEYS.WARDROBE);
+            if (cachedItems) {
+                const updatesWithImage = { ...updates, image: imageUpdate };
+                const updatedCache = cachedItems.map(item => item.id === id ? { ...item, ...updatesWithImage } : item);
+                await cacheService.set(CACHE_KEYS.WARDROBE, updatedCache);
+                // Queue for sync when online
+                await cacheService.addPendingChange({
+                    type: 'update',
+                    collection: 'wardrobe',
+                    docId: id,
+                    data: updates
+                });
+                console.log('[Wardrobe] Update queued for sync');
+            }
             throw error;
         }
     },
     /**
      * Deletes a specific wardrobe item.
+     * Updates cache and marks as pending if offline.
      */
     deleteWardrobeItem: async (id) => {
         const user = auth.currentUser;
@@ -152,9 +218,30 @@ export const wardrobeService = {
             throw new Error("Kullanıcı oturumu kapalı.");
         try {
             await db.collection(COLLECTION_NAME).doc(id).delete();
+            console.log('[Wardrobe] Deleted from Firestore:', id);
+            // Update cache
+            const cachedItems = await cacheService.get(CACHE_KEYS.WARDROBE);
+            if (cachedItems) {
+                const updatedCache = cachedItems.filter(item => item.id !== id);
+                await cacheService.set(CACHE_KEYS.WARDROBE, updatedCache);
+                console.log('[Wardrobe] Cache updated, item removed:', id);
+            }
         }
         catch (error) {
-            console.error("Wardrobe delete error:", error);
+            console.error('[Wardrobe] Delete error:', error);
+            // Update cache optimistically for offline support
+            const cachedItems = await cacheService.get(CACHE_KEYS.WARDROBE);
+            if (cachedItems) {
+                const updatedCache = cachedItems.filter(item => item.id !== id);
+                await cacheService.set(CACHE_KEYS.WARDROBE, updatedCache);
+                // Queue for sync when online
+                await cacheService.addPendingChange({
+                    type: 'delete',
+                    collection: 'wardrobe',
+                    docId: id
+                });
+                console.log('[Wardrobe] Delete queued for sync');
+            }
             throw error;
         }
     }

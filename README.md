@@ -45,6 +45,20 @@ No setup required. The application runs natively in the browser environment.
    npm start
    ```
 
+## Firestore Index Management
+
+When modifying Firestore queries, you may need to update composite indexes. Index definitions are stored in `firestore.indexes.json`.
+
+After changing indexes:
+```bash
+npm run firebase:indexes
+```
+
+To deploy both rules and indexes:
+```bash
+npm run firebase:deploy
+```
+
 ## License
 
 All rights reserved.
